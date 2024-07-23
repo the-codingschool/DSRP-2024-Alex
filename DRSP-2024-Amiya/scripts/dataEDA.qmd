@@ -52,3 +52,22 @@ data_39677 <- (data[word_id == 39677, ])
 
 sum(data_39677$word_occurrences)
 ```
+
+Basic Algorithm for estimating similarity scores
+
+```{r}
+set.seed(123)
+
+# N documents
+
+N <- nrow(data)
+
+# Partition into G groups, each of size ~N/G
+G <- sample(1:N, 1)
+  
+split_data <- split(data, G)
+
+# Total number of comparisons would be: G * (N/G * N/G) = N^2/ G
+
+# Finding the pairwise dot products
+```
