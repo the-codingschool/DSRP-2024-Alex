@@ -1,0 +1,60 @@
+Loading in libraries
+
+```{r}
+library(data.table) # this library contains the fread() function
+library(ggplot2)
+library(dplyr)
+```
+
+Read in the dataset and name the columns
+
+```{r}
+data <- fread("data/docword.nytimes.txt.gz")
+
+vocab <- fread("data/vocab.nytimes.txt")
+```
+
+Adding meaningful column names to the dataset
+
+```{r}
+colnames(data) <- c("article_id", "word_id", "word_occurrences")
+
+data
+```
+
+Plotting the dataset as a bar plot
+
+```{r}
+ggplot(data = data, aes(x = word_id)) +
+  geom_bar() +
+  labs(title = "NYTimes Word Counts",
+       x = "Word ID",
+       y = "Occurrences")
+```
+
+Identifying the word with the highest number of occurrences
+
+```{r}
+highest_occurrences <- data %>%
+    ungroup %>%
+    slice_max(word_occurrences) %>%
+    pull(word_id)
+
+highest_occurrences
+
+print(vocab[highest_occurrences-1])
+```
+
+Finding the number of times that word occurred
+
+```{r}
+data_39677 <- (data[word_id == 39677, ])
+
+sum(data_39677$word_occurrences)
+```
+
+Applying a basic, inefficient algorithm to check similarity between rows of the dataset
+
+```{r}
+
+```
