@@ -52,9 +52,3 @@ data_39677 <- (data[word_id == 39677, ])
 
 sum(data_39677$word_occurrences)
 ```
-
-Applying a basic, inefficient algorithm to check similarity between rows of the dataset
-
-```{r}
-
-```
