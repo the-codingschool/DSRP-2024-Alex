@@ -53,21 +53,141 @@ data_39677 <- (data[word_id == 39677, ])
 sum(data_39677$word_occurrences)
 ```
 
-Basic Algorithm for estimating similarity scores
+Converting the data table into a list of vectors for each article
 
 ```{r}
-set.seed(123)
+# Create a smaller dataset containing 10 articles because the dataset contains too many articles
+small_data <- filter(data, article_id <= 10)
+
+colnames(vocab) <- c("word")
+vocab_vector <- setNames(1:nrow(vocab), vocab$word)
+
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
+  article_data <- filter(small_data, article_id == x)
+  
+  for (i in 1:nrow(article_data)) {
+    word_index <- as.integer(article_data[i, 'word_id'])
+    word_count <- as.integer(article_data[i, 'word_occurrences'])
+    article_vector[word_index] <- word_count
+  }
+  
+  # Add data from data table into article vector
+  vector_list[[x]] <- article_vector
+  if(x %% 100 == 0) {
+    cat("processed ", x)
+  }
+}
+
+# Print the vectors and dataframes for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+filter(small_data, article_id == 1)
+filter(small_data, article_id == 2)
+#print(vector1)
+print(vector2)
+```
+
+**Basic algorithm for calculating similarity scores using cosine similarity**
+
+The cosine similarity matrix consists of n x n entries of the form (i, j), representing the cosine similarity between vector i and vector j. The matrix is symmetric, and diagonal entries represent the similarity of each vector with itself (which equals 1, unless there are any zero vectors).
+
+```{r}
+# Number of vectors
+n <- length(vector_list)
+
+# Compute vector magnitudes
+# the sapply function is used to apply a function to each vector in vector_list
+vector_magnitudes <- sapply(vector_list, function(vec) sqrt(sum(vec^2)))
+
+# Create a matrix for the cosine similarity
+cosine_similarity_matrix <- matrix(0, n, n)
+
+# Compute pairwise cosine similarity
+for (i in 1:n) {
+  for (j in i:n) {
+    # Compute dot product
+    dot_product <- as.integer(vector_list[[i]] %*% vector_list[[j]])
+    
+    # Get magnitudes
+    magnitude_i <- vector_magnitudes[i]
+    magnitude_j <- vector_magnitudes[j]
+    
+    # Calculate cosine similarity
+    if (magnitude_i == 0 || magnitude_j == 0) {
+      cosine_similarity_matrix[i, j] <- NA  # If the vector is empty
+    } else {
+      cosine_similarity_matrix[i, j] <- dot_product / (magnitude_i * magnitude_j)
+    }
+    
+    # Since cosine similarity is symmetric, copy the value to complete the rest of the matrix
+    cosine_similarity_matrix[j, i] <- cosine_similarity_matrix[i, j]
+  }
+}
+
+cosine_similarity_matrix
+```
+
+First attempt to create a basic algorithm for estimating similarity scores
+
+Does not work because 'value' is not a column on its own and it is difficult to use cosine similarity with four vectors
+
+```{r}
+set.seed(42)
 
 # N documents
 
-N <- nrow(data)
+# N <- max(data$article_id)
 
-# Partition into G groups, each of size ~N/G
-G <- sample(1:N, 1)
-  
-split_data <- split(data, G)
+N <- 2
 
 # Total number of comparisons would be: G * (N/G * N/G) = N^2/ G
 
-# Finding the pairwise dot products
+G <- sample(1:N, 1)
+
+# Create the group_id vector, ensuring it matches the length of the dataset
+group_id <- rep(1:G, length.out = nrow(data))
+
+data_with_group_id <- mutate(data, group_id = group_id)
+
+value <- subset(data_with_group_id, select = c(word_id, word_occurrences))
+
+for (x in 1:N) {
+  group_id_temp <- ceiling(x / (N / G))
+  # Find the indices of rows where article_id == x
+  indices <- which(data$article_id == x)
+   # Assign group_id_temp to the group_id for those rows
+  data_with_group_id$group_id[indices] <- group_id_temp
+}
+
+# Loop over G groups
+for (x in 1:G) {
+  # Creates a new dataset with only the rows of one group
+  data_subset <- subset(data_with_group_id, group_id == x)
+  
+ cosine_similarity <- function(vec1, vec2) {
+  if (sqrt(sum(vec1^2)) == 0 || sqrt(sum(vec2^2)) == 0) {
+    return(NA)
+  }
+  sum(vec1 * vec2) / (sqrt(sum(vec1^2)) * sqrt(sum(vec2^2)))
+}
+  
+   # Find the pairwise dot products
+  # Loop over the articles within a group
+  num_of_articles <- unique(data_subset$article_id)
+  for (i in 1:(length(num_of_articles) - 1)) {
+    for (j in (i + 1):length(num_of_articles)) {
+      article_i <- data_subset[data_subset$article_id == num_of_articles[i], ]
+      article_j <- data_subset[data_subset$article_id == num_of_articles[j], ]
+      
+
+      vec_i <- article_i$value
+      vec_j <- article_j$value
+      
+      similarity_score <- cosine_similarity(vec_i, vec_j)
+      print(paste("Cosine similarity between article", num_of_articles[i], "and article", num_of_articles[j], "in group", x, ":", similarity_score))
+    }
+  }
+}
 ```
