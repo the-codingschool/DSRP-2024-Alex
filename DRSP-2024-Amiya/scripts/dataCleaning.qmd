@@ -224,32 +224,37 @@ compare_articles(data, vocab, 403, 404)
 compare_articles(data, vocab, 404, 405)
 ```
 
-It turns out that there is only one word that differs between all three articles! This means we should be deleting 2 of the 3 articles from our dataset.
+It turns out that there is only one word that differs between all three articles. This means we should be deleting 2 of the 3 articles from our dataset.
 
 Therefore, it is likely that there are more duplicate article pairs than just those with the maximum similarity scores- articles that differ by just 10 words can also be considered duplicates.
 
-We can try to clean our data by removing duplicate articles for the article pairs with the top 10 similarity scores.
+We can try to clean our data by removing duplicate articles for the article pairs with similarity scores above a certain value. Let's first find the articles with the top 200 similarity scores.
 
 ```{r}
-# Flatten the matrix to a vector for easier sorting
-flattened_vector <- as.vector(rounded_matrix)
+# Find the top 200 maximum similarity values
+top_values <- sort(rounded_matrix[rounded_matrix != 1], decreasing = TRUE)[1:200]
 
-# Find the top 10 maximum similarity values
-top_10_values <- sort(flattened_vector[flattened_vector != 1], decreasing = TRUE)[1:10]
+# Display the top 200 similarity values
+top_values
 
-# Display the top 10 similarity values
-top_10_values
-
-# Find the indices of the top 10 similarity values in the matrix
-top_10_indices <- list()
-for (value in top_10_values) {
+# Find the indices of the top 200 similarity values in the matrix
+top_indices <- list()
+for (value in top_values) {
   indices <- which(rounded_matrix == value, arr.ind = TRUE)
-  top_10_indices[[as.character(value)]] <- indices
+  top_indices[[as.character(value)]] <- indices
 }
 
-# Display the indices of the top 10 similarity values
-top_10_indices
+# Display the indices of the top 200 similarity values
+top_indices
 ```
+
+Let's now use our function from earlier to check how many words articles 904 and 893 differ by.
+
+```{r}
+compare_articles(data, vocab, 904, 893)
+```
+
+The two articles with the 200th highest similarity score differ by 8 words.
 
 Graph the similarity scores
 
