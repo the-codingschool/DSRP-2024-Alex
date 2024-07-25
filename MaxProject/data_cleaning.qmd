@@ -1,59 +1,72 @@
+Install Libraries
 ```{r}
 library(readr)
 library(dplyr)
 library(data.table)
+library(hash)
 ```
 
+Loading Data
 ```{r}
+#file paths
 data_file_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/docword.nytimes_head.txt'
-vocab_file_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+nyt_vocab_file_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+english_vocab_file_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/words_alpha.txt'
 ```
 
 ```{r}
+#read article data
 data <- fread(data_file_path)
 colnames(data) <- c("article_id", "word_id", "word_id_occurrences")
 ```
 
 ```{r}
-vocab <- fread(vocab_file_path)
-colnames(vocab) <- c("word")
-vocab_vector <- setNames(1:nrow(vocab), vocab$word)
-length(vocab_vector)
+#read nyt vocab data
+nyt_vocab <- fread(nyt_vocab_file_path)
+colnames(nyt_vocab) <- c("word")
+nyt_vocab_vector <- setNames(1:nrow(nyt_vocab), nyt_vocab$word)
+length(nyt_vocab_vector)
+
+#read english vocab data
+english_vocab <- fread(english_vocab_file_path)
+colnames(english_vocab) <- c("word")
+english_vocab_set <- hash(keys = english_vocab$word, values = TRUE)
+#use double brackets syntax to check set, i.e. english_vocab_set[["example"]]
+```
+Ignore nonsensical words such as "ffff", but keep words prefixed with zzz_ since they seem important.
+
+```{r}
+valid_word_ids <- logical(length(nyt_vocab_vector))
+for (i in 1:length(valid_word_ids)) {
+  word <- names(nyt_vocab_vector)[i]
+  if (!is.null(english_vocab_set[[ word ]] ) || startsWith(word, 'zzz')) {
+    valid_word_ids[i] = TRUE
+  }
+}
+
+sum(valid_word_ids)
 ```
 
-
-
+Establish Metadata
 ```{r}
 metadata <- c(300000, 102660, 69679427)
 
 total_articles <- as.integer(metadata[1])
 vocabulary_size <- as.integer(metadata[2])
 total_words <- as.integer(metadata[3])
-
-# Step 2: Read the data using fread=
-data <- fread(text = paste(data_lines, collapse = "\n"), header = FALSE, sep = " ")
-
-# Assign column names
-colnames(data) <- c("article_id", "word_id", "word_id_occurrences")
 ```
 
+Make smaller dataframe
 ```{r}
 small_data <- filter(data, article_id <= 1000)
 small_data
 ```
 
-```{r}
-num =  as.integer(small_data[1, "word_id"])
-vector1 = c(1, 2, 3)
-vector2 = c(4, 5, 6)
-sample_list = list()
-sample_list[[1]] <- vector1
-class(sample_list[[1]])
-```
-
+Convert data table into vectors for each article
+Cleaning Conditions: ignore word_ids with nonsensical words (words in nyt vocab but not in english vocab). 
+Check zzz_{word} to see if word is in nyt_vocab_vector. If it is, ignore zzz_{word} and increase frequency of {word} by one. 
 
 ```{r}
-
 vector_list <- list()
 for (x in unique(small_data$article_id)) {
   article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
@@ -61,8 +74,10 @@ for (x in unique(small_data$article_id)) {
   
   for (i in 1:nrow(article_data)) {
     word_index <- as.integer(article_data[i, 'word_id'])
-    word_count <- as.integer(article_data[i, 'word_id_occurrences'])
-    article_vector[word_index] <- word_count
+    word_occurences <- as.integer(article_data[i, 'word_id_occurrences'])
+    if(valid_word_ids[word_index]) {
+      article_vector[word_index] <- word_occurences
+    }
   }
   
   # Add data from data table into article vector
@@ -77,12 +92,10 @@ vector1 = vector_list[[1]]
 vector2 = vector_list[[2]]
 filter(small_data, article_id == 1)
 filter(small_data, article_id == 2)
-#print(vector1)
-print(vector2)
 ```
-```{r}
-as.integer(vector1 %*% vector2)
-```
+
+
+Compute pairwise dot products for all vectors in vector list
 
 ```{r}
 # Number of articles (vectors)
@@ -103,11 +116,7 @@ for (i in 1:n) {
 
 ```
 
-```{r}
-dot_product_matrix
-```
-
-
+Statistical measures for similarity scores: 
 ```{r}
 off_diag_elements <- dot_product_matrix[upper.tri(dot_product_matrix, diag = FALSE)]
 mean_value <- mean(off_diag_elements)
@@ -118,7 +127,7 @@ cat("Median:", median_value, "\n")
 cat("Standard Deviation:", sd_value, "\n")
 ```
 
-
+Convert similarity scores into dataframe, find most similar articles
 ```{r}
 # Assuming dot_product_matrix is your 1000x1000 matrix
 
@@ -156,23 +165,28 @@ filter(off_diag_data, value > 3000)
 library(ggplot2)
 graphing_data <- data.frame(value = off_diag_elements)
 ggplot(graphing_data, aes(x = value)) +
-  geom_histogram(binwidth = 10, fill = "blue", color = "black", alpha = 0.7) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
   labs(title = "Histogram of Off-Diagonal Elements",
        x = "Dot Product Value",
        y = "Frequency") +
   xlim(0, 1000) +
   theme_minimal()
+
 ```
 Investigate Outlier
 ```{r}
-vector_list[[722]] %*% vector_list[[215]]
-filter(small_data, article_id == 722)
-filter(small_data, article_id == 215)
+vector_list[[276]] %*% vector_list[[277]]
+filter(small_data, article_id == 781, word_id_occurrences > 10)
+filter(small_data, article_id == 782, word_id_occurrences > 10)
 ```
 ```{r}
 
-vocab_vector[14758]
+nyt_vocab_vector[9282]
 
 ```
+nyt_vocab_vector[indexOf, ]
+
 Conclusions: There's a bunch of repeated nonsensical words like ffff, causing similarity scores to skyrocket. The data must be cleaned to only include words which contain information. 
+
+Common words repeated a lot such as "administrative" lead to high similarity scores. Use tf-idf to normalize, adjust for this. 
 

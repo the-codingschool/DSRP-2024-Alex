@@ -1,0 +1,207 @@
+```{r}
+# Load necessary libraries
+library(Matrix)
+library(readr)
+library(dplyr)
+library(data.table)
+library(hash)
+
+```
+
+```{r}
+# File paths
+data_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/docword.nytimes_head.txt'
+nyt_vocab_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+english_vocab_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/words_alpha.txt'
+
+# Read article data
+data <- fread(data_file_path)
+colnames(data) <- c("article_id", "word_id", "word_id_occurrences")
+
+# Read NYT vocab data
+nyt_vocab <- fread(nyt_vocab_file_path)
+colnames(nyt_vocab) <- c("word")
+nyt_vocab_vector <- nyt_vocab$word
+nyt_vocab_set <- hash(keys = nyt_vocab_vector, values = 1:length(nyt_vocab_vector))
+
+# Read English vocab data
+english_vocab <- fread(english_vocab_file_path)
+colnames(english_vocab) <- c("word")
+english_vocab_set <- hash(keys = english_vocab$word, values = TRUE)
+```
+```{r}
+# Identify valid word IDs
+valid_word_ids <- logical(length(nyt_vocab_vector))
+for (i in 1:length(valid_word_ids)) {
+  word <- nyt_vocab_vector[i]
+  if (!is.null(english_vocab_set[[word]]) || startsWith(word, 'zzz_')) {
+    valid_word_ids[i] = TRUE
+  }
+}
+```
+
+```{r}
+# Establish metadata
+metadata <- c(300000, 102660, 69679427)
+total_articles <- as.integer(metadata[1])
+vocabulary_size <- as.integer(metadata[2])
+total_words <- as.integer(metadata[3])
+```
+
+```{r}
+# Filter data for smaller dataframe
+small_data <- filter(data, article_id <= 1000)
+```
+
+```{r}
+# Convert data table into a sparse matrix
+word_indices <- small_data$word_id
+valid_word_mask <- valid_word_ids[word_indices]
+small_data <- small_data[valid_word_mask, ]
+
+# Initialize sparse matrix
+library(Matrix)
+sparse_matrix <- sparseMatrix(
+  i = small_data$article_id,
+  j = small_data$word_id,
+  x = small_data$word_id_occurrences,
+  dims = c(max(small_data$article_id), length(nyt_vocab_vector))
+)
+```
+
+```{r}
+# Process the zzz_ words
+for (i in 1:length(nyt_vocab_vector)) {
+  word <- nyt_vocab_vector[i]
+  if (startsWith(word, "zzz_")) {
+    suffix <- substr(word, 5, nchar(word))
+    if (!is.null(nyt_vocab_set[[suffix]])) {
+      suffix_index <- nyt_vocab_set[[suffix]]
+      sparse_matrix[, suffix_index] <- sparse_matrix[, suffix_index] + sparse_matrix[, i]
+      sparse_matrix[, i] <- 0
+    }
+  }
+  if(i %% 100 == 0) {
+    print(word)
+  }
+}
+```
+
+```{r}
+dot_product_matrix <- tcrossprod(sparse_matrix)
+dot_product_matrix[1,2]
+```
+
+```{r}
+dot_product_matrix[2,1]
+```
+
+
+```{r}
+# Extract off-diagonal elements
+dot_product_matrix <- tcrossprod(tf_idf)
+off_diag_elements <- dot_product_matrix[upper.tri(dot_product_matrix, diag = FALSE)]
+
+# Calculate statistical measures for similarity scores
+mean_value <- mean(off_diag_elements)
+median_value <- median(off_diag_elements)
+sd_value <- sd(off_diag_elements)
+cat("Mean:", mean_value, "\n")
+cat("Median:", median_value, "\n")
+cat("Standard Deviation:", sd_value, "\n")
+
+# Convert similarity scores into a dataframe to find most similar articles
+upper_tri_indices <- upper.tri(dot_product_matrix, diag = FALSE)
+row_indices <- row(dot_product_matrix)[upper_tri_indices]
+column_indices <- col(dot_product_matrix)[upper_tri_indices]
+off_diag_data <- data.frame(
+  row = row_indices,
+  column = column_indices,
+  value = off_diag_elements
+)
+```
+
+```{r}
+# Identify the row/column pair with the largest off-diagonal element
+max_similarity <- off_diag_data[which.max(off_diag_data$value), ]
+cat("Row with highest similarity:", max_similarity$row, "\n")
+cat("Column with highest similarity:", max_similarity$column, "\n")
+cat("Highest similarity (dot product):", max_similarity$value, "\n")
+
+```
+```{r}
+# Plot histogram of off-diagonal elements
+library(ggplot2)
+graphing_data <- data.frame(value = off_diag_elements)
+ggplot(graphing_data, aes(x = value)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Off-Diagonal Elements",
+       x = "Dot Product Value",
+       y = "Frequency") +
+  xlim(0, 1000) +
+  theme_minimal()
+```
+
+```{r}
+arrange(off_diag_data, desc(value))
+```
+```{r}
+filter(df, article_id == 403) |>
+  arrange(desc(value))
+filter(df, article_id == 405) |>
+  arrange(desc(value))
+```
+```{r}
+#find fast way to do this. 
+is_duplicate = logical(nrow(sparse_matrix))
+for(i in 1:nrow(sparse_matrix)) {
+  for(j in i:nrow(sparse_matrix)){
+    if (sum(sparse_matrix[i, ] != sparse_matrix[j,]) < 5) {
+      is_duplicate[i] = TRUE
+      is_duplicate[j] = TRUE
+    }
+  }
+  print(i)
+}
+
+```
+
+
+```{r}
+#convert sparse matrix to easy to read dataframe
+matrix = tf_idf
+matrix_summary <-summary(matrix)
+df <- data.frame(
+  article_id = matrix_summary$i,
+  word_id = matrix_summary$j,
+  value = matrix_summary$x
+)
+```
+
+
+```{r}
+#tf-idf
+library(slam)
+# Calculate Term Frequency (TF) = number of occurrences of word/total words
+tf <- sparse_matrix
+
+# Calculate Document Frequency (DF) =  log(total #documents/#documents containing word)
+df <- col_sums(as(tf > 0, "dMatrix"))
+
+# Calculate Inverse Document Frequency (IDF)
+num_docs <- nrow(tf)
+idf <- log((1 + num_docs) / (df + 1))
+
+# Replicate inverse document frequency into matrix
+idf_matrix <- Matrix(data = rep(idf, dim(sparse_matrix)[1]), nrow = dim(sparse_matrix)[1], ncol = length(idf), byrow = TRUE, sparse = TRUE )
+
+#Calculate tf-idf
+tf_idf = tf * idf_matrix
+tf_idf
+```
+
+
+```{r}
+tf_idf[1,]
+```
+
