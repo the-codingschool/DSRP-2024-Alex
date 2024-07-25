@@ -56,8 +56,8 @@ sum(data_39677$word_occurrences)
 Converting the data table into a list of vectors for each article
 
 ```{r}
-# Create a smaller dataset containing 10 articles because the dataset contains too many articles
-small_data <- filter(data, article_id <= 10)
+# Create a smaller dataset containing chosen number of articles because the dataset contains too many articles
+small_data <- filter(data, article_id <= 1000)
 
 colnames(vocab) <- c("word")
 vocab_vector <- setNames(1:nrow(vocab), vocab$word)
@@ -75,7 +75,9 @@ for (x in unique(small_data$article_id)) {
   
   # Add data from data table into article vector
   vector_list[[x]] <- article_vector
-  if(x %% 100 == 0) {
+  
+  # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
+ if(x %% 100 == 0) {
     cat("processed ", x)
   }
 }
@@ -85,7 +87,7 @@ vector1 = vector_list[[1]]
 vector2 = vector_list[[2]]
 filter(small_data, article_id == 1)
 filter(small_data, article_id == 2)
-#print(vector1)
+print(vector1)
 print(vector2)
 ```
 
@@ -140,7 +142,7 @@ set.seed(42)
 
 # N <- max(data$article_id)
 
-N <- 2
+N <- 10
 
 # Total number of comparisons would be: G * (N/G * N/G) = N^2/ G
 
