@@ -1,0 +1,258 @@
+Loading in libraries
+
+```{r}
+library(data.table) # this library contains the fread() function
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(pheatmap) # for clustering and reordering
+```
+
+Read in the dataset and name the columns
+
+```{r}
+data <- fread("data/docword.nytimes.txt.gz")
+
+vocab <- fread("data/vocab.nytimes.txt")
+```
+
+Adding meaningful column names to the dataset
+
+```{r}
+colnames(data) <- c("article_id", "word_id", "word_occurrences")
+
+data
+```
+
+Plotting the dataset as a bar plot
+
+```{r}
+ggplot(data = data, aes(x = word_id)) +
+  geom_bar() +
+  labs(title = "NYTimes Word Counts",
+       x = "Word ID",
+       y = "Occurrences")
+```
+
+Identifying the word with the highest number of occurrences
+
+```{r}
+highest_occurrences <- data %>%
+    ungroup %>%
+    slice_max(word_occurrences) %>%
+    pull(word_id)
+
+highest_occurrences
+
+print(vocab[highest_occurrences-1])
+```
+
+Finding the number of times that word occurred
+
+```{r}
+data_39677 <- (data[word_id == 39677, ])
+
+sum(data_39677$word_occurrences)
+```
+
+Converting the data table into a list of vectors for each article
+
+```{r}
+# Create a smaller dataset containing chosen number of articles because the dataset contains too many articles
+small_data <- filter(data, article_id <= 1000)
+
+colnames(vocab) <- c("word")
+vocab_vector <- setNames(1:nrow(vocab), vocab$word)
+
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
+  article_data <- filter(small_data, article_id == x)
+  
+  for (i in 1:nrow(article_data)) {
+    word_index <- as.integer(article_data[i, 'word_id'])
+    word_count <- as.integer(article_data[i, 'word_occurrences'])
+    article_vector[word_index] <- word_count
+  }
+  
+  # Add data from data table into article vector
+  vector_list[[x]] <- article_vector
+  
+  # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
+ if(x %% 100 == 0) {
+    cat("processed ", x)
+  }
+}
+
+# Print the vectors and dataframes for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+filter(small_data, article_id == 1)
+filter(small_data, article_id == 2)
+print(vector1)
+print(vector2)
+```
+
+**Basic algorithm for calculating similarity scores using cosine similarity**
+
+The cosine similarity matrix consists of n x n entries of the form (i, j), representing the cosine similarity between vector i and vector j. The matrix is symmetric, and diagonal entries represent the similarity of each vector with itself (which equals 1, unless there are any zero vectors).
+
+```{r}
+# Number of vectors
+n <- length(vector_list)
+
+# Compute vector magnitudes
+# the sapply function is used to apply a function to each vector in vector_list
+vector_magnitudes <- sapply(vector_list, function(vec) sqrt(sum(vec^2)))
+
+# Create a matrix for the cosine similarity
+cosine_similarity_matrix <- matrix(0, n, n)
+
+# Compute pairwise cosine similarity
+for (i in 1:n) {
+  for (j in i:n) {
+    # Compute dot product
+    dot_product <- as.integer(vector_list[[i]] %*% vector_list[[j]])
+    
+    # Get magnitudes
+    magnitude_i <- vector_magnitudes[i]
+    magnitude_j <- vector_magnitudes[j]
+    
+    # Calculate cosine similarity
+    if (magnitude_i == 0 || magnitude_j == 0) {
+      cosine_similarity_matrix[i, j] <- NA  # If the vector is empty
+    } else {
+      cosine_similarity_matrix[i, j] <- dot_product / (magnitude_i * magnitude_j)
+    }
+    
+    # Since cosine similarity is symmetric, copy the value to complete the rest of the matrix
+    cosine_similarity_matrix[j, i] <- cosine_similarity_matrix[i, j]
+  }
+}
+
+cosine_similarity_matrix
+```
+
+What are the articles that have the highest similarity score/are the most similar?
+
+```{r}
+# Round the values in the cosine similarity matrix to 14 decimal places because otherwise they round to 1
+rounded_matrix <- round(cosine_similarity_matrix, 14)
+
+# Find the highest similarity value, ignoring 1s (self-similarity)
+max_similarity <- max(rounded_matrix[rounded_matrix != 1])
+
+# Display the highest similarity value
+max_similarity
+
+# Find the indices of the highest similarity value in the matrix
+highest_similarity_indices <- which(rounded_matrix == max_similarity, arr.ind = TRUE)
+
+# Display the indices of the highest similarity value
+highest_similarity_indices
+```
+
+Since the similarity score is so high and close to 1, these articles must be almost the same with the exception of a few words. This could mean that the articles are the same and one might be an updated version of the other. In this case, we don't want to keep both articles because they are basically duplicates and can mess up our data.
+
+We can do this by making a vector for each article, and then finding the words that differ between two articles.
+
+Let's start by creating a function that compares two articles. Then, we can try comparing articles 403 and 404 as well as articles 404 and 405.
+
+```{r}
+compare_articles <- function(data, vocab, article_id1, article_id2) {
+  # Filter the dataset for the first article
+  article_data1 <- filter(data, article_id == article_id1)
+  
+  # Initialize with zeros
+  article_vector1 <- numeric(length(vocab_vector))
+  
+  # Populate the vector with word occurrences for the first article
+  for (i in 1:nrow(article_data1)) {
+    word_index <- as.integer(article_data1[i, 'word_id'])
+    word_count <- as.integer(article_data1[i, 'word_occurrences'])
+    article_vector1[word_index] <- word_count
+  }
+  
+  # Filter the dataset for the second article
+  article_data2 <- filter(data, article_id == article_id2)
+  
+  # Initialize with zeros
+  article_vector2 <- numeric(length(vocab_vector))
+  
+  # Populate the vector with word occurrences for the second article
+  for (i in 1:nrow(article_data2)) {
+    word_index <- as.integer(article_data2[i, 'word_id'])
+    word_count <- as.integer(article_data2[i, 'word_occurrences'])
+    article_vector2[word_index] <- word_count
+  }
+  
+  # Find indices of different word counts between the two articles
+  different_indices <- which(article_vector1 != article_vector2)
+  
+  # Extract words that are different
+  different_words <- names(different_indices)
+  
+  # Print the words and their counts for both articles
+  for (word_index in different_indices) {
+    cat("Word:", vocab$word[word_index], "\n")
+    cat("Count in article", article_id1, ":", article_vector1[word_index], "\n")
+    cat("Count in article", article_id2, ":", article_vector2[word_index], "\n\n")
+  }
+  
+# Create a dataframe of differences with dynamic column names
+  differences_df <- data.frame(
+    word = vocab$word[different_indices],
+    count_in_article1 = article_vector1[different_indices],
+    count_in_article2 = article_vector2[different_indices]
+  )
+  
+  # Rename columns to include actual article numbers
+  colnames(differences_df) <- c(
+    "word",
+    paste("count_in_article", article_id1, sep="_"),
+    paste("count_in_article", article_id2, sep="_")
+  )
+  
+  return(differences_df)
+}
+
+# Use this function to compare articles 403 and 404
+compare_articles(data, vocab, 403, 404)
+
+# Use this function to compare articles 404 and 405
+compare_articles(data, vocab, 404, 405)
+```
+
+It turns out that there is only one word that differs between all three articles! This means we should be deleting 2 of the 3 articles from our dataset.
+
+Therefore, it is likely that there are more duplicate article pairs than just those with the maximum similarity scores- articles that differ by just 10 words can also be considered duplicates.
+
+We can try to clean our data by removing duplicate articles for the article pairs with the top 10 similarity scores.
+
+```{r}
+# Flatten the matrix to a vector for easier sorting
+flattened_vector <- as.vector(rounded_matrix)
+
+# Find the top 10 maximum similarity values
+top_10_values <- sort(flattened_vector[flattened_vector != 1], decreasing = TRUE)[1:10]
+
+# Display the top 10 similarity values
+top_10_values
+
+# Find the indices of the top 10 similarity values in the matrix
+top_10_indices <- list()
+for (value in top_10_values) {
+  indices <- which(rounded_matrix == value, arr.ind = TRUE)
+  top_10_indices[[as.character(value)]] <- indices
+}
+
+# Display the indices of the top 10 similarity values
+top_10_indices
+```
+
+Graph the similarity scores
+
+```{r}
+
+```
