@@ -5,7 +5,8 @@ library(readr)
 library(dplyr)
 library(data.table)
 library(hash)
-
+library(ggplot2)
+library(slam)
 ```
 
 ```{r}
@@ -60,7 +61,7 @@ valid_word_mask <- valid_word_ids[word_indices]
 small_data <- small_data[valid_word_mask, ]
 
 # Initialize sparse matrix
-library(Matrix)
+
 sparse_matrix <- sparseMatrix(
   i = small_data$article_id,
   j = small_data$word_id,
@@ -68,6 +69,7 @@ sparse_matrix <- sparseMatrix(
   dims = c(max(small_data$article_id), length(nyt_vocab_vector))
 )
 ```
+
 
 ```{r}
 # Process the zzz_ words
@@ -88,28 +90,52 @@ for (i in 1:length(nyt_vocab_vector)) {
 ```
 
 ```{r}
-dot_product_matrix <- tcrossprod(sparse_matrix)
-dot_product_matrix[1,2]
-```
+#create tf-idf matrix
+create_tf_idf <-function(matrix) {
+  # Calculate Term Frequency (TF) = number of occurrences of word/total words
+  tf <- matrix
+  
+  # Calculate Document Frequency (DF) =  log(total #documents/#documents containing word)
+  df <- col_sums(as(tf > 0, "dMatrix"))
+  
+  # Calculate Inverse Document Frequency (IDF)
+  num_docs <- nrow(tf)
+  idf <- log((1 + num_docs) / (df + 1))
+  
+  # Replicate inverse document frequency into matrix
+  idf_matrix <- Matrix(data = rep(idf, dim(matrix)[1]), nrow = dim(matrix)[1], ncol = length(idf), byrow = TRUE, sparse = TRUE )
+  
+  #Calculate tf-idf
+  tf_idf = tf * idf_matrix
+  return(tf_idf)
+}
 
-```{r}
-dot_product_matrix[2,1]
+tf_idf<- create_tf_idf(sparse_matrix)
 ```
-
 
 ```{r}
 # Extract off-diagonal elements
-dot_product_matrix <- tcrossprod(tf_idf)
+matrix = create_tf_idf(filtered_sparse_matrix) #or sparse_matrix
+dot_product_matrix <- tcrossprod(matrix)
 off_diag_elements <- dot_product_matrix[upper.tri(dot_product_matrix, diag = FALSE)]
 
 # Calculate statistical measures for similarity scores
 mean_value <- mean(off_diag_elements)
 median_value <- median(off_diag_elements)
 sd_value <- sd(off_diag_elements)
+quartiles <- quantile(off_diag_elements)
+
+Q1 <- quantile(off_diag_elements, 0.25)
+Q3 <- quantile(off_diag_elements, 0.75)
+IQR <- Q3 - Q1
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
 cat("Mean:", mean_value, "\n")
 cat("Median:", median_value, "\n")
 cat("Standard Deviation:", sd_value, "\n")
-
+cat("Quartiles\n", quartiles, "\n")
+cat("Lower Bound:", lower_bound, "Upper Bound:", upper_bound)
 # Convert similarity scores into a dataframe to find most similar articles
 upper_tri_indices <- upper.tri(dot_product_matrix, diag = FALSE)
 row_indices <- row(dot_product_matrix)[upper_tri_indices]
@@ -120,6 +146,16 @@ off_diag_data <- data.frame(
   value = off_diag_elements
 )
 ```
+```{r}
+#convert sparse matrix to easy to read dataframe
+matrix_summary <-summary(matrix)
+df <- data.frame(
+  article_id = matrix_summary$i,
+  word_id = matrix_summary$j,
+  value = matrix_summary$x
+)
+```
+
 
 ```{r}
 # Identify the row/column pair with the largest off-diagonal element
@@ -144,64 +180,87 @@ ggplot(graphing_data, aes(x = value)) +
 
 ```{r}
 arrange(off_diag_data, desc(value))
+outlier_df <- filter(off_diag_data, value > 345)
+outlier_df
 ```
 ```{r}
-filter(df, article_id == 403) |>
+nyt_vocab_vector[26812]
+```
+
+```{r}
+filter(df, article_id == 507) |>
   arrange(desc(value))
-filter(df, article_id == 405) |>
+filter(df, article_id == 508) |>
   arrange(desc(value))
 ```
 ```{r}
-#find fast way to do this. 
-is_duplicate = logical(nrow(sparse_matrix))
-for(i in 1:nrow(sparse_matrix)) {
-  for(j in i:nrow(sparse_matrix)){
-    if (sum(sparse_matrix[i, ] != sparse_matrix[j,]) < 5) {
-      is_duplicate[i] = TRUE
-      is_duplicate[j] = TRUE
-    }
+# Initialize an empty data frame to store duplicates
+# This step takes the longest, find an optimized way to do this maybe
+is_duplicate <- data.frame(row = integer(), col = integer(), diff_count = integer(), stringsAsFactors = FALSE)
+
+for(i in 1:nrow(outlier_df)) {
+  row <- outlier_df[i, "row"]
+  col <- outlier_df[i, "column"]
+  diff_count <- sum(sparse_matrix[row, ] != sparse_matrix[col,])
+  
+  if (diff_count < 10)  {
+    is_duplicate <- rbind(is_duplicate, data.frame(row = row, col = col, diff_count = diff_count))
   }
-  print(i)
+  
+  if(i %% 1000 == 0) {
+    cat("processed", i)
+  }
 }
 
 ```
+```{r}
+#Dealing with duplicates:
+#Option 1: ignore all duplicates
+#Option 2: keep one instance of duplicated articles (hard)
+# Count occurrences of each row in is_duplicate
+row_counts <- table(is_duplicate$row)
+rows_repeated_three_times_or_more <- names(row_counts[row_counts >= 3])
+rows_repeated_three_times_or_more <- as.numeric(rows_repeated_three_times_or_more)
 
+# Optionally, do the same for columns if needed
+column_counts <- table(is_duplicate$col)
+columns_repeated_three_times_or_more <- names(column_counts[column_counts >= 3])
+columns_repeated_three_times_or_more <- as.numeric(columns_repeated_three_times_or_more)
+
+# Display the results
+cat("Rows repeated three times or more:\n", rows_repeated_three_times_or_more, "\n")
+cat("Columns repeated three times or more:\n", columns_repeated_three_times_or_more, "\n")
+
+```
+```{r}
+duplicate_articles <- unique(c(is_duplicate$row, is_duplicate$col))
+```
 
 ```{r}
-#convert sparse matrix to easy to read dataframe
-matrix = tf_idf
-matrix_summary <-summary(matrix)
-df <- data.frame(
-  article_id = matrix_summary$i,
-  word_id = matrix_summary$j,
-  value = matrix_summary$x
+# Step 1: Identify articles to keep
+articles_to_keep <- setdiff(1:max(small_data$article_id), duplicate_articles)
+
+# Step 2: Filter the data to include only articles to keep
+filtered_data <- small_data[small_data$article_id %in% articles_to_keep, ]
+
+# Map old article ids to new article ids in filtered data
+unique_article_ids <- sort(unique(filtered_data$article_id))
+new_article_id_mapping <- setNames(seq_along(unique_article_ids), unique_article_ids)
+filtered_data$new_article_id <- new_article_id_mapping[as.character(filtered_data$article_id)] #key = old id, value = new id
+
+# Step 3: Create a new sparse matrix with filtered data
+filtered_sparse_matrix <- sparseMatrix(
+  i = filtered_data$new_article_id,
+  j = filtered_data$word_id,
+  x = filtered_data$word_id_occurrences,
+  dims = c(max(filtered_data$new_article_id), length(nyt_vocab_vector))
 )
+
+# final clean result: 
+# filtered_sparse_matrix
+# final clean result with tf_idf: 
+# create_tf_idf(filtered_sparse_matrix)
 ```
 
-
-```{r}
-#tf-idf
-library(slam)
-# Calculate Term Frequency (TF) = number of occurrences of word/total words
-tf <- sparse_matrix
-
-# Calculate Document Frequency (DF) =  log(total #documents/#documents containing word)
-df <- col_sums(as(tf > 0, "dMatrix"))
-
-# Calculate Inverse Document Frequency (IDF)
-num_docs <- nrow(tf)
-idf <- log((1 + num_docs) / (df + 1))
-
-# Replicate inverse document frequency into matrix
-idf_matrix <- Matrix(data = rep(idf, dim(sparse_matrix)[1]), nrow = dim(sparse_matrix)[1], ncol = length(idf), byrow = TRUE, sparse = TRUE )
-
-#Calculate tf-idf
-tf_idf = tf * idf_matrix
-tf_idf
-```
-
-
-```{r}
-tf_idf[1,]
 ```
 
