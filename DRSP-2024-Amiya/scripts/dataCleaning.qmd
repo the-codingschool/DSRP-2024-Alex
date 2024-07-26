@@ -1,6 +1,8 @@
 Loading in libraries
 
 ```{r}
+library(textreuse)
+library(profvis)
 library(data.table) # this library contains the fread() function
 library(ggplot2)
 library(dplyr)
@@ -99,6 +101,8 @@ print(vector2)
 The cosine similarity matrix consists of n x n entries of the form (i, j), representing the cosine similarity between vector i and vector j. The matrix is symmetric, and diagonal entries represent the similarity of each vector with itself (which equals 1, unless there are any zero vectors).
 
 ```{r}
+basic_algorithm <- function(vector_list) {
+
 # Number of vectors
 n <- length(vector_list)
 
@@ -128,9 +132,9 @@ for (i in 1:n) {
     
     # Since cosine similarity is symmetric, copy the value to complete the rest of the matrix
     cosine_similarity_matrix[j, i] <- cosine_similarity_matrix[i, j]
+    }
   }
 }
-
 cosine_similarity_matrix
 ```
 
@@ -283,16 +287,28 @@ ggplot(plot_data, aes(x = Row, y = Col, color = Value)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-Let's now use our function from earlier to check how many words articles 904 and 893 differ by.
+Let's now use our function from earlier to check how many words articles 904 and 893, the pair with the 200th highest similarity score, differ by.
 
 ```{r}
 compare_articles(data, vocab, 904, 893)
 ```
 
-The two articles with the 200th highest similarity score differ by 8 words.
+The two articles with the 200th highest similarity score differ by 8 words. This doesn't seem to be too much of a problem because 200 near-duplicates should not skew our results by a large amount.
 
-Graph the similarity scores
+Now let's use the profvis package to measure the efficiency of the basic algorithm that uses cosine similarity.
 
 ```{r}
+# Profile the algorithm
+basic_algorithm_prof_results <- profvis({
+ basic_algorithm(vector_list)
+})
+
+basic_algorithm_prof_results
+```
+
+Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called MinHash to perform the same task of finding similarity scores.
+
+```{r}
+
 
 ```
