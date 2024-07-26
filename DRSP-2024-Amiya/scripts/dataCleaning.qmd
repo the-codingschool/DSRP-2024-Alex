@@ -248,6 +248,41 @@ for (value in top_values) {
 top_indices
 ```
 
+We can create a visual representation of the pairs of articles with the top 200 similarity scores
+
+```{r}
+# Create a data frame for plotting
+plot_data <- data.frame(
+  Row = integer(0),
+  Col = integer(0),
+  Value = numeric(0)
+)
+
+for (value in names(top_indices)) {
+  indices <- top_indices[[value]]
+  for (i in 1:nrow(indices)) {
+    plot_data <- rbind(plot_data, data.frame(
+      Row = indices[i, 1],
+      Col = indices[i, 2],
+      Value = as.numeric(value)
+    ))
+  }
+}
+
+# Print the data frame to ensure it's correct
+print(plot_data)
+
+# Plot the top 200 similarity values
+ggplot(plot_data, aes(x = Row, y = Col, color = Value)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red", name = "Similarity") +
+  theme_minimal() +
+  labs(title = "Top 200 Cosine Similarity Values",
+       x = "Article 1",
+       y = "Article 2") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
 Let's now use our function from earlier to check how many words articles 904 and 893 differ by.
 
 ```{r}
