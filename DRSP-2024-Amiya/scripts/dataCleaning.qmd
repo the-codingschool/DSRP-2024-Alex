@@ -1,8 +1,6 @@
 Loading in libraries
 
 ```{r}
-library(textreuse)
-library(profvis)
 library(data.table) # this library contains the fread() function
 library(ggplot2)
 library(dplyr)
@@ -294,21 +292,3 @@ compare_articles(data, vocab, 904, 893)
 ```
 
 The two articles with the 200th highest similarity score differ by 8 words. This doesn't seem to be too much of a problem because 200 near-duplicates should not skew our results by a large amount.
-
-Now let's use the profvis package to measure the efficiency of the basic algorithm that uses cosine similarity.
-
-```{r}
-# Profile the algorithm
-basic_algorithm_prof_results <- profvis({
- basic_algorithm(vector_list)
-})
-
-basic_algorithm_prof_results
-```
-
-Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called MinHash to perform the same task of finding similarity scores.
-
-```{r}
-
-
-```
