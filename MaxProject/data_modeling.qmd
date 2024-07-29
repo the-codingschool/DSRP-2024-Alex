@@ -1,0 +1,307 @@
+```{r}
+library(Matrix)
+library(readr)
+library(dplyr)
+library(data.table)
+library(hash)
+library(ggplot2)
+library(slam)
+library(tidyr)
+library(stats)
+library(flexclust)
+library(lsa)
+library(ClusterR)
+library(philentropy)
+library(textreuse)
+```
+```{r}
+# k-means clustering with custom distance calculation
+cosine_distance <- function(x, centers) {
+  distance_matrix <- matrix(NA, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i, j] <- 1 - distance(rbind(x[i, ], centers[j, ]), method = "cosine")
+    }
+  }
+  return(distance_matrix)
+}
+
+dot_product_distance_0 <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- - distance(rbind(x[i, ], centers[j, ]), method = "inner_product")
+      #distance_matrix[i, j] <- - sum(x[i, ] %*% centers[j, ])  # Using negative dot product as distance
+    }
+  }
+  return(distance_matrix)
+}
+
+# Vectorized Dot Product Distance Function
+dot_product_distance <- function(x, centers) {
+  similarity_matrix <- tcrossprod(x, centers)
+  distance_matrix <- -similarity_matrix  # Use negative dot product as distance
+  return(distance_matrix)
+}
+
+
+euclidean_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- distance(rbind(x[i, ], centers[j, ]), method = "euclidean")# Using negative dot product as distance
+    }
+  }
+  return(distance_matrix)
+}
+
+jaccard_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      binary_row <- ifelse(x[i, ] != 0, 1, 0)
+      binary_col <- ifelse(centers[j, ] != 0, 1, 0)
+      #distance_matrix[i,j] <- distance(rbind(binary_row, binary_col), method = "jaccard")
+      intersection <- sum(binary_row & binary_col)
+      union <- sum(binary_row | binary_col)
+      jaccard_similarity <- intersection / union
+      distance_matrix[i,j] <- 1 - jaccard_similarity
+    }
+  }
+  return(distance_matrix)
+}
+
+convert_to_indices <- function(counts) {
+    as.character(which(counts != 0))
+}
+
+minhash_distance_vectors <- function(vector1, vector2, hashes = 200) {
+  minhash <- minhash_generator(n = hashes, seed = 42)
+  indices_1 <- convert_to_indices(vector1)
+  indices_2 <- convert_to_indices(vector2)
+  
+  jaccard_estimate <- sum(minhash(indices_1) == minhash(indices_2))/hashes
+  jaccard_estimate_distance <- 1 - jaccard_estimate
+  
+  jaccard_estimate_distance
+}
+
+minhash_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- minhash_distance_vectors(x[i, ], centers[j, ])
+    }
+  }
+  print("distance computed")
+  return(distance_matrix)
+}
+
+stupid_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- 2
+    }
+  }
+  return(distance_matrix)
+}
+```
+
+
+```{r}
+kcca_result <- kcca(filtered_dense_matrix, k = 5, family = kccaFamily(which = "kmeans", dist =  dot_product_distance), control = list(initcent = "kmeanspp"))
+```
+
+```{r}
+#Custom k-means function to print progress, with custom distance metric 
+kcca_with_progress <- function(data, k, dist_function = NULL, nstart = 1) {
+  best_kcca <- NULL
+  best_tot_withinss <- Inf
+
+  for (i in 1:nstart) {
+    set.seed(i)
+    kcca_result <- kcca(data, k = k, family = kccaFamily("kmeans", dist = dist_function), control = list(initcent = "kmeanspp"))
+    
+    # Calculate within-cluster sum of squares directly
+    cluster_centers <- kcca_result@centers
+    cluster_assignments <- kcca_result@cluster
+    total_wcss <- 0
+    
+    for (j in 1:k) {
+      cluster_points <- data[cluster_assignments == j, , drop = FALSE]
+      if (nrow(cluster_points) > 0) {
+        distances <- apply(cluster_points, 1, function(point) {
+          sum((point - cluster_centers[j, ])^2)
+        })
+        total_wcss <- total_wcss + sum(distances)
+      }
+    }
+    
+    # Print progress for each start
+    cat("Initialization:", i, "\n")
+    cat("Total within-cluster sum of squares:", total_wcss, "\n")
+    
+    # Check if this is the best k-means result so far
+    if (total_wcss < best_tot_withinss) {
+      best_kcca <- kcca_result
+      best_tot_withinss <- total_wcss
+    }
+  }
+  
+  return(best_kcca)
+}
+
+```
+```{r}
+# Custom k-means function to print progress
+kmeans_with_progress <- function(data, centers, nstart = 1, max_iter = 100) {
+  best_kmeans <- NULL
+  best_tot_withinss <- Inf #measure of loss, within cluster sum of squares
+  
+  for (i in 1:nstart) {
+    set.seed(i)
+    kmeans_result <- kmeans(data, centers = centers, iter.max = max_iter)
+    
+    # Print progress for each start
+    cat("Initialization:", i, "Total within-cluster sum of squares:", kmeans_result$tot.withinss, "Iterations:", kmeans_result$iter, "\n")
+    
+    # Check if this is the best k-means result so far
+    if (kmeans_result$tot.withinss < best_tot_withinss) {
+      best_kmeans <- kmeans_result
+      best_tot_withinss <- kmeans_result$tot.withinss
+    }
+  }
+  
+  return(best_kmeans)
+}
+```
+
+```{r}
+data_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_matrix.rds"
+mapping_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_mapping.csv"
+data <- readRDS(data_path)
+mapping <- read_csv(mapping_path)
+```
+
+```{r}
+filter(mapping, new_id == 500)
+```
+
+
+```{r}
+dense_matrix <- data
+#remove zero variance columns
+zero_var_columns <- apply(dense_matrix, 2, var) == 0 #param: apply(matrix, dimension, function)
+filtered_dense_matrix <- dense_matrix[, !zero_var_columns]
+# dont need scaling since tf-idf alrleady does that 
+```
+
+
+```{r}
+#run kmeans on filtered data
+centers <- 20
+nstart <- 5
+max_iter <- 100 
+my_data <- filtered_dense_matrix
+
+best_kmeans_result <- kmeans_with_progress(my_data, centers, nstart, max_iter)
+```
+
+
+```{r}
+# Step 4: Explore the clustering results
+# Print the cluster centers
+# print(best_kmeans_result$centers)
+
+# Print the cluster assignment of each article
+table(best_kmeans_result$cluster)
+```
+
+```{r}
+pca_result <- prcomp(my_data, scale. = TRUE)
+#pca_data <- data.frame(pca_result$x, Cluster = as.factor(kmeans_result$cluster))
+```
+
+```{r}
+# Extract standard deviations of principal components
+sdev <- pca_result$sdev
+
+# Calculate variance explained by each principal component
+variances <- sdev^2
+
+# Calculate proportion of variance explained
+proportion_variance_explained <- variances / sum(variances)
+
+# Calculate cumulative proportion of variance explained
+cumulative_variance_explained <- cumsum(proportion_variance_explained)
+
+# Combine results into a data frame for easy viewing
+pca_variance <- data.frame(
+  PC = paste0("PC", 1:length(proportion_variance_explained)),
+  Variance = variances,
+  ProportionVarianceExplained = proportion_variance_explained,
+  CumulativeVarianceExplained = cumulative_variance_explained
+)
+
+# View the results
+print(pca_variance)
+```
+```{r}
+# Convert PC to numeric for proper x-axis labeling
+pca_variance$PC <- as.numeric(gsub("PC", "", pca_variance$PC))
+
+# Scree plot
+ggplot(pca_variance, aes(x = PC, y = ProportionVarianceExplained)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Scree Plot",
+       x = "Principal Component",
+       y = "Proportion of Variance Explained") +
+  theme_minimal()
+```
+```{r}
+# Choose the number of components that explain a sufficient amount of variance, using math or graph
+#explained_variance <- summary(pca_result)$importance[2,]
+#num_components <- which(cumsum(explained_variance) > 0.90)[1]
+num_components <- 676
+# Reduce data to the selected number of components
+reduced_data <- pca_result$x[, 1:num_components]
+```
+
+
+```{r}
+centers <- 30
+nstart <- 100
+max_iter <- 100 
+
+best_kmeans_result_pca <- kmeans_with_progress(reduced_data, centers, nstart, max_iter)
+```
+```{r}
+table(best_kmeans_result_pca$cluster)
+```
+
+
+```{r}
+# Plot the results (optional)
+library(ggplot2)
+library(dplyr)
+
+# Reduce dimensionality for visualization using PCA
+pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
+pca_data <- data.frame(pca_result$x, Cluster = as.factor(kmeans_result$cluster))
+
+# Plot the first two principal components
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "K-means Clustering Result",
+       x = "Principal Component 1",
+       y = "Principal Component 2") +
+  theme_minimal()
+
+```
+
+
+```{r}
+table(kmeans_result$cluster)
+```
+

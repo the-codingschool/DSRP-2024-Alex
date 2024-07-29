@@ -148,12 +148,15 @@ off_diag_data <- data.frame(
 ```
 ```{r}
 #convert sparse matrix to easy to read dataframe
-matrix_summary <-summary(matrix)
-df <- data.frame(
-  article_id = matrix_summary$i,
-  word_id = matrix_summary$j,
-  value = matrix_summary$x
-)
+create_df <- function(matrix) {
+  matrix_summary <-summary(matrix)
+  df <- data.frame(
+    article_id = matrix_summary$i,
+    word_id = matrix_summary$j,
+    value = matrix_summary$x
+  )
+  return(df)
+}
 ```
 
 
@@ -170,8 +173,9 @@ cat("Highest similarity (dot product):", max_similarity$value, "\n")
 library(ggplot2)
 graphing_data <- data.frame(value = off_diag_elements)
 ggplot(graphing_data, aes(x = value)) +
-  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
-  labs(title = "Histogram of Off-Diagonal Elements",
+  #geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  geom_density(alpha = 0.5, fill = "red") + 
+  labs(title = "Distribution of TF-IDF Dot Product Similarity",
        x = "Dot Product Value",
        y = "Frequency") +
   xlim(0, 1000) +
@@ -182,6 +186,8 @@ ggplot(graphing_data, aes(x = value)) +
 arrange(off_diag_data, desc(value))
 outlier_df <- filter(off_diag_data, value > 345)
 outlier_df
+seventyfifth <- filter(off_diag_data, value > 157)
+seventyfifth
 ```
 ```{r}
 nyt_vocab_vector[26812]
@@ -257,10 +263,28 @@ filtered_sparse_matrix <- sparseMatrix(
 )
 
 # final clean result: 
-# filtered_sparse_matrix
+filtered_sparse_matrix
 # final clean result with tf_idf: 
-# create_tf_idf(filtered_sparse_matrix)
+filered_sparse_matrix_tf_idf <- create_tf_idf(filtered_sparse_matrix)
+#final clean result with tf_idf dataframe:
+final_df <- create_df(filered_sparse_matrix_tf_idf)
+```
+```{r}
+#final values to export
+final_matrix <- as.matrix(filered_sparse_matrix_tf_idf)
+final_df <- create_df(filered_sparse_matrix_tf_idf)
+final_mapping <- data.frame(original_id = names(new_article_id_mapping), new_id = new_article_id_mapping)
 ```
 
+```{r}
+
 ```
+
+```{r}
+# Export to CSV
+saveRDS(final_matrix, "final_matrix.rds")
+write.csv(final_df, "final_df.csv", row.names = FALSE)
+write.csv(final_mapping, "final_mapping.csv", row.names = FALSE)
+```
+
 
