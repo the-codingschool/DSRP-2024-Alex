@@ -108,20 +108,15 @@ stupid_distance <- function(x, centers) {
 }
 ```
 
-
-```{r}
-kcca_result <- kcca(filtered_dense_matrix, k = 5, family = kccaFamily(which = "kmeans", dist =  dot_product_distance), control = list(initcent = "kmeanspp"))
-```
-
 ```{r}
 #Custom k-means function to print progress, with custom distance metric 
-kcca_with_progress <- function(data, k, dist_function = NULL, nstart = 1) {
+kcca_with_progress <- function(data, k, dist_function = "kmeans", nstart = 1) {
   best_kcca <- NULL
   best_tot_withinss <- Inf
 
   for (i in 1:nstart) {
     set.seed(i)
-    kcca_result <- kcca(data, k = k, family = kccaFamily("kmeans", dist = dist_function), control = list(initcent = "kmeanspp"))
+    kcca_result <- kcca(data, k = k, family = kccaFamily(which = dist_function), control = list(initcent = "kmeanspp"))
     
     # Calculate within-cluster sum of squares directly
     cluster_centers <- kcca_result@centers
@@ -178,14 +173,21 @@ kmeans_with_progress <- function(data, centers, nstart = 1, max_iter = 100) {
 ```
 
 ```{r}
+nyt_vocab_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+nyt_vocab <- fread(nyt_vocab_file_path)
+colnames(nyt_vocab) <- c("word")
+nyt_vocab_vector <- nyt_vocab$word
+```
+```{r}
 data_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_matrix.rds"
+df_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_df.csv"
 mapping_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_mapping.csv"
 data <- readRDS(data_path)
 mapping <- read_csv(mapping_path)
 ```
 
 ```{r}
-filter(mapping, new_id == 500)
+new_to_old_mapping <- hash(keys = mapping$new_id, values = mapping$original_id)
 ```
 
 
@@ -195,32 +197,100 @@ dense_matrix <- data
 zero_var_columns <- apply(dense_matrix, 2, var) == 0 #param: apply(matrix, dimension, function)
 filtered_dense_matrix <- dense_matrix[, !zero_var_columns]
 # dont need scaling since tf-idf alrleady does that 
+# Reduce dimensionality using PCA
+pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
+reduced_matrix <- pca_result$x
+```
+
+```{r}
+kcca_result <- kcca_with_progress(reduced_matrix, k = 100, "angle", nstart = 20)
+kcca_result
+```
+
+```{r}
+#create dataframe with cluster, article_id, and original article_id
+cluster_data <- data.frame(
+  article_id = 1:length(kcca_result@cluster),
+  cluster = kcca_result@cluster,
+  original_id = sapply(1:length(kcca_result@cluster), function(x) {
+    new_to_old_mapping[[as.character(x)]]
+  })
+)
+table(cluster_data[,"cluster"])
 ```
 
 
 ```{r}
-#run kmeans on filtered data
-centers <- 20
-nstart <- 5
-max_iter <- 100 
-my_data <- filtered_dense_matrix
+# Create dataframes for each article, containing words and idf values. 
+# Initialize an empty list to store data frames
+list_of_data_frames <- list()
 
-best_kmeans_result <- kmeans_with_progress(my_data, centers, nstart, max_iter)
+# Loop through each row (article) in the dense matrix
+for (i in 1:nrow(dense_matrix)) {
+  non_zero_indices <- which(dense_matrix[i, ] != 0)
+  tf_idf_values <- dense_matrix[i, non_zero_indices]
+  
+  # Create a data frame for the current article
+  article_df <- data.frame(
+    article_id = i,
+    word_index = non_zero_indices,
+    tf_idf = tf_idf_values
+  )
+  
+  article_df <- article_df |> cbind(
+    word = sapply(article_df$word_index, function(index) {
+      nyt_vocab_vector[index]
+    })
+  )
+  
+  # Append the data frame to the list
+  list_of_data_frames[[i]] <- article_df
+}
 ```
 
 
 ```{r}
-# Step 4: Explore the clustering results
-# Print the cluster centers
-# print(best_kmeans_result$centers)
-
-# Print the cluster assignment of each article
-table(best_kmeans_result$cluster)
+#create aggregate cluster dataframe
+cluster_num = 15
+for (cluster_num in 1:100){
+  articles_in_cluster <- filter(cluster_data, cluster == cluster_num)$article_id
+  
+  # Initialize merged_cluster_df with the first article in the cluster
+  merged_cluster_df <- list_of_data_frames[[articles_in_cluster[1]]]
+  
+  # Loop through the remaining articles in the cluster and perform full outer join
+  for(id in articles_in_cluster[-1]) {
+    df_id <- list_of_data_frames[[id]]
+    merged_cluster_df <- full_join(merged_cluster_df, df_id, by = "word", suffix = c("", paste0("_df", as.character(id))))
+  }
+  
+  names(merged_cluster_df)[names(merged_cluster_df) == "article_id"] <- paste0("article_id_df", as.character(articles_in_cluster[1]))
+  names(merged_cluster_df)[names(merged_cluster_df) == "word_index"] <- paste0("word_index_df", as.character(articles_in_cluster[1]))
+  names(merged_cluster_df)[names(merged_cluster_df) == "tf_idf"] <- paste0("tf_idf_df", as.character(articles_in_cluster[1]))
+  
+  #calculate aggregate tfidf for each word in the cluster. (Finds most important words)
+  aggregated_tf_idf <- merged_cluster_df |>
+    rowwise() |>
+    mutate(total_tf_idf = sum(c_across(starts_with("tf_idf")), na.rm = TRUE)) |>
+    select(word, total_tf_idf) |>
+    arrange(desc(total_tf_idf))
+  print(aggregated_tf_idf)
+}
 ```
 
 ```{r}
-pca_result <- prcomp(my_data, scale. = TRUE)
-#pca_data <- data.frame(pca_result$x, Cluster = as.factor(kmeans_result$cluster))
+df1 <- data.frame(col1 = c(1, 2, 3), col2 = c(10, 20, 30), ignore = c(100, 200, 300))
+mutate(rowwise(df1), total_sum = sum(c_across(starts_with("col")), na.rm = TRUE))
+```
+
+```{r}
+# Reduce dimensionality for visualization using PCA
+pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
+reduced_matrix <- pca_result$x
+```
+
+```{r}
+pca_data <- data.frame(pca_result$x, Cluster = as.factor(kcca_result@cluster))
 ```
 
 ```{r}
@@ -270,38 +340,32 @@ reduced_data <- pca_result$x[, 1:num_components]
 
 
 ```{r}
-centers <- 30
-nstart <- 100
-max_iter <- 100 
-
-best_kmeans_result_pca <- kmeans_with_progress(reduced_data, centers, nstart, max_iter)
-```
-```{r}
-table(best_kmeans_result_pca$cluster)
-```
-
-
-```{r}
-# Plot the results (optional)
-library(ggplot2)
-library(dplyr)
-
-# Reduce dimensionality for visualization using PCA
-pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
-pca_data <- data.frame(pca_result$x, Cluster = as.factor(kmeans_result$cluster))
-
 # Plot the first two principal components
+library(ggplot2)
 ggplot(pca_data, aes(x = PC1, y = PC2, color = Cluster)) +
   geom_point(alpha = 0.7) +
   labs(title = "K-means Clustering Result",
        x = "Principal Component 1",
        y = "Principal Component 2") +
-  theme_minimal()
+  theme_minimal() + 
+  coord_cartesian(xlim = c(0, 10), ylim = c(0, 10))
 
 ```
-
-
 ```{r}
-table(kmeans_result$cluster)
+library(plotly)
+
+# Create 3D scatter plot
+fig <- plot_ly(pca_data, x = ~PC1, y = ~PC2, z = ~PC3, type = 'scatter3d', color = ~Cluster)
+
+fig <- fig |> layout(
+  scene = list(
+    xaxis = list(range = c(0, 10)),  # Set x-axis limits
+    yaxis = list(range = c(0, 10)),  # Set y-axis limits
+    zaxis = list(range = c(0, 10))   # Set z-axis limits
+  )
+)
+
+fig
 ```
+
 

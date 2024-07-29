@@ -31,6 +31,9 @@ colnames(english_vocab) <- c("word")
 english_vocab_set <- hash(keys = english_vocab$word, values = TRUE)
 ```
 ```{r}
+# List of meaningless words causing problems, invalid
+ignore_words <- c("xxx")
+
 # Identify valid word IDs
 valid_word_ids <- logical(length(nyt_vocab_vector))
 for (i in 1:length(valid_word_ids)) {
@@ -38,8 +41,12 @@ for (i in 1:length(valid_word_ids)) {
   if (!is.null(english_vocab_set[[word]]) || startsWith(word, 'zzz_')) {
     valid_word_ids[i] = TRUE
   }
+  if(word %in% ignore_words) {
+    valid_word_ids[i] = FALSE
+  }
 }
 ```
+
 
 ```{r}
 # Establish metadata
