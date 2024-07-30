@@ -133,7 +133,7 @@ for (i in 1:n) {
     }
   }
 }
-cosine_similarity_matrix
+cosine_similarity_matrix <- basic_algorithm(vector_list)
 ```
 
 What are the articles that have the highest similarity score/are the most similar?
@@ -291,4 +291,4 @@ Let's now use our function from earlier to check how many words articles 904 and
 compare_articles(data, vocab, 904, 893)
 ```
 
-The two articles with the 200th highest similarity score differ by 8 words. This doesn't seem to be too much of a problem because 200 near-duplicates should not skew our results by a large amount.
+The two articles with the 200th highest similarity score differ by 8 words. However, since we will be using the SimHash algorithm in the analysis, we can test further for accuracy because SimHash combines near duplicate articles.
