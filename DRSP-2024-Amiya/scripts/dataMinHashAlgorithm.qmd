@@ -1,0 +1,201 @@
+This document contains the code the MinHash algorithm because it was not what I wanted to use in my final analysis.
+
+Loading in libraries
+
+```{r}
+library(stringi)
+library(htmlwidgets)
+library(lsa)
+library(Matrix)
+library(textreuse)
+library(profvis)
+library(data.table) # this library contains the fread() function
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(pheatmap) # for clustering and reordering
+```
+
+Read in the dataset and name the columns
+
+```{r}
+data <- fread("data/docword.nytimes.txt.gz")
+
+vocab <- fread("data/vocab.nytimes.txt")
+```
+
+Adding meaningful column names to the dataset
+
+```{r}
+colnames(data) <- c("article_id", "word_id", "word_occurrences")
+
+data
+```
+
+First convert the data table into a list of vectors for each article.
+
+```{r}
+# Create a smaller dataset containing chosen number of articles because the dataset contains too many articles
+small_data <- filter(data, article_id <= 1000)
+
+colnames(vocab) <- c("word")
+vocab_vector <- setNames(1:nrow(vocab), vocab$word)
+
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
+  article_data <- filter(small_data, article_id == x)
+  
+  for (i in 1:nrow(article_data)) {
+    word_index <- as.integer(article_data[i, 'word_id'])
+    word_count <- as.integer(article_data[i, 'word_occurrences'])
+    article_vector[word_index] <- word_count
+  }
+  
+  # Add data from data table into article vector
+  vector_list[[x]] <- article_vector
+  
+  # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
+ if(x %% 100 == 0) {
+    cat("processed ", x)
+  }
+}
+
+# Print the vectors and dataframes for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+filter(small_data, article_id == 1)
+filter(small_data, article_id == 2)
+print(vector1)
+print(vector2)
+```
+
+**Basic algorithm for calculating similarity scores using cosine similarity**
+
+The cosine similarity matrix consists of n x n entries of the form (i, j), representing the cosine similarity between vector i and vector j. The matrix is symmetric, and diagonal entries represent the similarity of each vector with itself (which equals 1, unless there are any zero vectors).
+
+```{r}
+basic_algorithm <- function(vector_list) {
+
+# Number of vectors
+n <- length(vector_list)
+
+# Compute vector magnitudes
+# the sapply function is used to apply a function to each vector in vector_list
+vector_magnitudes <- sapply(vector_list, function(vec) sqrt(sum(vec^2)))
+
+# Create a matrix for the cosine similarity
+cosine_similarity_matrix <- matrix(0, n, n)
+
+# Compute pairwise cosine similarity
+for (i in 1:n) {
+  for (j in i:n) {
+    # Compute dot product
+    dot_product <- as.integer(vector_list[[i]] %*% vector_list[[j]])
+    
+    # Get magnitudes
+    magnitude_i <- vector_magnitudes[i]
+    magnitude_j <- vector_magnitudes[j]
+    
+    # Calculate cosine similarity
+    if (magnitude_i == 0 || magnitude_j == 0) {
+      cosine_similarity_matrix[i, j] <- NA  # If the vector is empty
+    } else {
+      cosine_similarity_matrix[i, j] <- dot_product / (magnitude_i * magnitude_j)
+    }
+    
+    # Since cosine similarity is symmetric, copy the value to complete the rest of the matrix
+    cosine_similarity_matrix[j, i] <- cosine_similarity_matrix[i, j]
+    }
+  }
+}
+
+cosine_similarity_matrix <- basic_algorithm(vector_list)
+```
+
+Now let's use the profvis package to measure the efficiency of the basic algorithm that uses cosine similarity.
+
+```{r}
+# Profile the algorithm
+basic_algorithm_prof_results <- profvis({
+ basic_algorithm(vector_list)
+})
+
+basic_algorithm_prof_results
+```
+
+**Locality Sensitive Hashing (LSH) algorithm: MinHash**
+
+Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called MinHash to perform the same task of finding similarity scores.
+
+Let's start by going back to the original character form that we started with.
+
+```{r}
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- vocab_vector
+}
+```
+
+Now let's create the MinHash function.
+
+```{r}
+minHash_algorithm <- function(vector_list) {
+
+# Creating a minhash function converts tokenized text into a set of hash integers, and then selects the minimum value
+  
+minhash <- minhash_generator(n = 20, seed = 3552)
+
+# Apply minhash to each article vector
+minhash_results <- sapply(vector_list, function(vocab_vector) {
+  minhash_result <- minhash(vocab_vector)  # Apply minhash to the vector
+})
+
+
+dir <- system.file("extdata/ats", package = "textreuse")
+
+corpus <- TextReuseCorpus(
+  dir = dir, 
+  tokenizer = tokenize_ngrams, 
+  n = 5, 
+  minhash_func = minhash, 
+  keep_tokens = TRUE, 
+  progress = FALSE)
+
+# Calculating the LSH
+buckets <- lsh(corpus, bands = 10, progress = FALSE)
+
+baxter_matches <- lsh_query(buckets, "calltounconv00baxt")
+
+candidates <- lsh_candidates(buckets)
+
+# Apply Jaccard similarity to the pairs of documents
+comparison_results <- lsh_compare(candidates, corpus, jaccard_similarity, progress = FALSE)
+
+# Convert to numeric if IDs are character or factor
+#comparison_results$a <- as.numeric(as.character(comparison_results$a))
+#comparison_results$b <- as.numeric(as.character(comparison_results$b))
+}
+
+comparison_results <- minHash_algorithm(vector_list)
+```
+
+Now let's use the profvis package to measure the efficiency of the MinHash algorithm.
+
+```{r}
+# Profile the algorithm
+minHash_algorithm_prof_results <- profvis({
+ minHash_algorithm(vector_list)
+})
+
+minHash_algorithm_prof_results
+```
+
+Save the MinHash algorithm profvis profile as an HTML file.
+
+```{r}
+saveWidget(minHash_algorithm_prof_results, file = "minHash_algorithm_profvis_profile.html")
+```
+
+However, we now realize that we are somewhat comparing apples to oranges because our basic algorithm uses cosine similarity and MinHash uses Jaccard similarity. Let us try using a different LSH algorithm called SimHash that uses cosine similarity unlike MinHash.
