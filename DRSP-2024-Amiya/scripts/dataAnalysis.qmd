@@ -1,6 +1,7 @@
 Loading in libraries
 
 ```{r}
+library(stringi)
 library(htmlwidgets)
 library(lsa)
 library(Matrix)
@@ -12,6 +13,22 @@ library(dplyr)
 library(tidyr)
 library(reshape2)
 library(pheatmap) # for clustering and reordering
+```
+
+Read in the dataset and name the columns
+
+```{r}
+data <- fread("data/docword.nytimes.txt.gz")
+
+vocab <- fread("data/vocab.nytimes.txt")
+```
+
+Adding meaningful column names to the dataset
+
+```{r}
+colnames(data) <- c("article_id", "word_id", "word_occurrences")
+
+data
 ```
 
 First convert the data table into a list of vectors for each article.
@@ -91,7 +108,8 @@ for (i in 1:n) {
     }
   }
 }
-cosine_similarity_matrix
+
+cosine_similarity_matrix <- basic_algorithm(vector_list)
 ```
 
 Now let's use the profvis package to measure the efficiency of the basic algorithm that uses cosine similarity.
@@ -105,75 +123,100 @@ basic_algorithm_prof_results <- profvis({
 basic_algorithm_prof_results
 ```
 
-**Locality Sensitive Hashing (LSH) algorithm: MinHash**
-
-Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called MinHash to perform the same task of finding similarity scores.
-
-Let's start by going back to the original character form that we started with.
-
-```{r}
-vector_list <- list()
-for (x in unique(small_data$article_id)) {
-  article_vector <- vocab_vector
-}
-```
-
-Now let's create the MinHash function.
-
-```{r}
-minHash_algorithm <- function(vector_list) {
-
-# Creating a minhash function converts tokenized text into a set of hash integers, and then selects the minimum value
-  
-minhash <- minhash_generator(n = 20, seed = 3552)
-
-# Apply minhash to each article vector
-minhash_results <- sapply(vector_list, function(vocab_vector) {
-  minhash_result <- minhash(vocab_vector)  # Apply minhash to the vector
-})
-
-
-dir <- system.file("extdata/ats", package = "textreuse")
-
-corpus <- TextReuseCorpus(
-  dir = dir, 
-  tokenizer = tokenize_ngrams, 
-  n = 5, 
-  minhash_func = minhash, 
-  keep_tokens = TRUE, 
-  progress = FALSE)
-
-# Calculating the LSH
-buckets <- lsh(corpus, bands = 10, progress = FALSE)
-
-baxter_matches <- lsh_query(buckets, "calltounconv00baxt")
-
-candidates <- lsh_candidates(buckets)
-
-# Apply Jaccard similarity to the pairs of documents
-comparison_results <- lsh_compare(candidates, corpus, jaccard_similarity, progress = FALSE)
-
-# Convert to numeric if IDs are character or factor
-#comparison_results$a <- as.numeric(as.character(comparison_results$a))
-#comparison_results$b <- as.numeric(as.character(comparison_results$b))
-}
-comparison_results
-```
-
-Now let's use the profvis package to measure the efficiency of the MinHash algorithm.
-
-```{r}
-# Profile the algorithm
-minHash_algorithm_prof_results <- profvis({
- minHash_algorithm(vector_list)
-})
-
-minHash_algorithm_prof_results
-```
-
-Save both the basic and MinHash algorithm profvis profiles as HTML files.
+Save the basic cosine similarity algorithm profvis profile as an HTML file.
 
 ```{r}
 saveWidget(basic_algorithm_prof_results, file = "basic_algorithm_profvis_profile.html")
-saveWidget(minHash_algorithm_prof_results, file = "minHash_algorithm_profvis_profile.html")
+```
+
+**Locality Sensitive Hashing (LSH) algorithm: SimHash**
+
+Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called SimHash to perform the same task of finding similarity scores.
+
+```{r}
+names(vector_list) <- as.character(unique(small_data$article_id))
+
+# Function to compute SimHash value
+compute_simHash <- function(vector, hash_size = 64) {
+  # Initialize bit vector
+  bit_vector <- rep(0, hash_size)
+  
+  # Compute hash for each bit position
+  for (i in 1:hash_size) {
+    bit_sum <- sum(vector * (i %% 2 * 2 - 1))  # Simple bitwise operation
+    bit_vector[i] <- ifelse(bit_sum >= 0, 1, 0)
+  }
+  
+  # Convert bit vector to string
+  simhash <- paste(bit_vector, collapse = "")
+  return(simhash)
+}
+
+# Function to calculate Hamming distance
+hamming_distance <- function(hash1, hash2) {
+  sum(strsplit(hash1, NULL)[[1]] != strsplit(hash2, NULL)[[1]])
+}
+
+# Main function to compute similarity matrix
+simHash_algorithm <- function(vector_list, hash_size = 64) {
+  # Compute SimHash for each article
+  simhash_list <- list()
+  for (article_id in names(vector_list)) {
+    article_vector <- vector_list[[article_id]]
+    simhash <- compute_simHash(article_vector, hash_size)
+    simhash_list[[article_id]] <- simhash
+  }
+  
+  # Compute pairwise similarity scores (Hamming distance matrix)
+  article_ids <- names(simhash_list)  # Ensure consistent ordering
+  num_articles <- length(article_ids)
+  simHash_similarity_matrix <- matrix(0, nrow = num_articles, ncol = num_articles)
+  rownames(simHash_similarity_matrix) <- article_ids
+  colnames(simHash_similarity_matrix) <- article_ids
+
+  for (i in 1:num_articles) {
+    for (j in i:num_articles) {
+      if (article_ids[i] %in% names(simhash_list) && article_ids[j] %in% names(simhash_list)) {
+        dist <- hamming_distance(simhash_list[[article_ids[i]]], simhash_list[[article_ids[j]]])
+        simHash_similarity_matrix[i, j] <- dist
+        simHash_similarity_matrix[j, i] <- dist  # Symmetric matrix
+      }
+    }
+  }
+}
+
+simHash_similarity_matrix <- simHash_algorithm(vector_list)
+```
+
+Now let's use the profvis package to measure the efficiency of the SimHash algorithm.
+
+```{r}
+# Profile the algorithm
+simHash_algorithm_prof_results <- profvis({
+ simHash_algorithm(vector_list)
+})
+
+simHash_algorithm_prof_results
+```
+
+Save the SimHash algorithm profvis profile as an HTML file.
+
+```{r}
+saveWidget(simHash_algorithm_prof_results, file = "simHash_algorithm_profvis_profile.html")
+```
+
+**Accuracy**
+
+Now, let's check the accuracy of each of the matrices. To start, we need to set a threshold similarity score to categorize article pairs as either similar (if their similarity score is above the threshold) or not similar (if their similarity score is below the threshold).
+
+Let's start by setting the threshold for both algorithms.
+
+```{r}
+threshold <- 0.5
+
+# Setting threshold for the basic algorithm by creating a new binary matrix
+binary_similarity_matrix <- ifelse(cosine_similarity_matrix >= threshold, 1, 0)
+
+
+# Setting threshold for the SimHash algorithm
 ```
