@@ -1,6 +1,7 @@
 Loading in libraries
 
 ```{r}
+library(caret)
 library(stringi)
 library(htmlwidgets)
 library(lsa)
@@ -106,7 +107,8 @@ for (i in 1:n) {
     # Since cosine similarity is symmetric, copy the value to complete the rest of the matrix
     cosine_similarity_matrix[j, i] <- cosine_similarity_matrix[i, j]
     }
-  }
+}
+return(cosine_similarity_matrix)
 }
 
 cosine_similarity_matrix <- basic_algorithm(vector_list)
@@ -143,7 +145,7 @@ compute_simHash <- function(vector, hash_size = 64) {
   
   # Compute hash for each bit position
   for (i in 1:hash_size) {
-    bit_sum <- sum(vector * (i %% 2 * 2 - 1))  # Simple bitwise operation
+    bit_sum <- sum(vector * (i %% 2 * 2 - 1))
     bit_vector[i] <- ifelse(bit_sum >= 0, 1, 0)
   }
   
@@ -168,7 +170,7 @@ simHash_algorithm <- function(vector_list, hash_size = 64) {
   }
   
   # Compute pairwise similarity scores (Hamming distance matrix)
-  article_ids <- names(simhash_list)  # Ensure consistent ordering
+  article_ids <- names(simhash_list)
   num_articles <- length(article_ids)
   simHash_similarity_matrix <- matrix(0, nrow = num_articles, ncol = num_articles)
   rownames(simHash_similarity_matrix) <- article_ids
@@ -179,10 +181,12 @@ simHash_algorithm <- function(vector_list, hash_size = 64) {
       if (article_ids[i] %in% names(simhash_list) && article_ids[j] %in% names(simhash_list)) {
         dist <- hamming_distance(simhash_list[[article_ids[i]]], simhash_list[[article_ids[j]]])
         simHash_similarity_matrix[i, j] <- dist
-        simHash_similarity_matrix[j, i] <- dist  # Symmetric matrix
+        # The matrix is symmetric
+        simHash_similarity_matrix[j, i] <- dist 
       }
     }
   }
+  return(simHash_similarity_matrix)
 }
 
 simHash_similarity_matrix <- simHash_algorithm(vector_list)
@@ -207,16 +211,74 @@ saveWidget(simHash_algorithm_prof_results, file = "simHash_algorithm_profvis_pro
 
 **Accuracy**
 
-Now, let's check the accuracy of each of the matrices. To start, we need to set a threshold similarity score to categorize article pairs as either similar (if their similarity score is above the threshold) or not similar (if their similarity score is below the threshold).
-
-Let's start by setting the threshold for both algorithms.
+Now, let's check the accuracy of each of the matrices. To start, let's test the accuracy of the SimHash algorithm by comparing it to the basic cosine similarity algorithm. This will tell us how much of a trade off we will have in accuracy in order to improve efficiency.
 
 ```{r}
-threshold <- 0.5
+# Function to calculate MSE between two matrices
+calculate_mse_matrices <- function(matrix1, matrix2) {
+  # Flatten the matrices to vectors
+  vector1 <- as.vector(matrix1)
+  vector2 <- as.vector(matrix2)
+  
+  # Calculate MSE
+  mean((vector1 - vector2)^2)
+}
 
-# Setting threshold for the basic algorithm by creating a new binary matrix
-binary_similarity_matrix <- ifelse(cosine_similarity_matrix >= threshold, 1, 0)
+# Calculate MSE
+mse_between_matrices <- calculate_mse_matrices(cosine_similarity_matrix, simHash_similarity_matrix)
+print(paste("MSE between Cosine Similarity and SimHash matrices:", mse_between_matrices))
+```
 
+Since the MSE value between the two algorithms is extremely low, this means that the SimHash algorithm values are almost just as accurate as the basic cosine similarity algorithm scores while drastically improving accuracy.
 
-# Setting threshold for the SimHash algorithm
+Now, let's actually create a confusion matrix for each algorithm.
+
+```{r}
+# Define a threshold for similarity
+threshold <- 0.6
+
+# Create binary ground truth matrix using the threshold
+ground_truth_matrix <- ifelse(cosine_similarity_matrix > threshold, 1, 0)
+
+# Convert cosine similarity matrix to binary predictions
+cosine_predictions <- ifelse(cosine_similarity_matrix > threshold, 1, 0)
+
+# Convert SimHash similarity matrix to binary predictions
+hamming_threshold <- 25
+simHash_predictions <- ifelse(simHash_similarity_matrix < hamming_threshold, 1, 0)
+
+# Flatten the matrices to vectors for comparison
+ground_truth_vector <- as.vector(ground_truth_matrix)
+cosine_predictions_vector <- as.vector(cosine_predictions)
+simHash_predictions_vector <- as.vector(simHash_predictions)
+
+# Define levels explicitly
+levels <- c(0, 1)
+
+# Convert vectors to factors with explicit levels
+ground_truth_vector <- factor(ground_truth_vector, levels = levels)
+cosine_predictions_vector <- factor(cosine_predictions_vector, levels = levels)
+simHash_predictions_vector <- factor(simHash_predictions_vector, levels = levels)
+
+# Create confusion matrix for cosine similarity
+confusion_cosine <- confusionMatrix(cosine_predictions_vector, ground_truth_vector)
+print("Confusion Matrix for Cosine Similarity:")
+print(confusion_cosine)
+
+# Create confusion matrix for SimHash
+confusion_simHash <- confusionMatrix(simHash_predictions_vector, ground_truth_vector)
+print("Confusion Matrix for SimHash:")
+print(confusion_simHash)
+```
+
+From the confusion matrices, we can now also get specific values for the accuracy of each algorithm.
+
+```{r}
+# Extract accuracy from the confusion matrix
+accuracy_cosine <- confusion_cosine$overall['Accuracy']
+print(paste("Accuracy for Cosine Similarity:", accuracy_cosine))
+
+# Extract accuracy from the confusion matrix
+accuracy_simHash <- confusion_simHash$overall['Accuracy']
+print(paste("Accuracy for SimHash:", accuracy_simHash))
 ```
