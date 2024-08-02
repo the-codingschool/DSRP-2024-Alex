@@ -2,6 +2,7 @@ Loading in libraries
 
 ```{r}
 library(caret)
+library(digest)
 library(stringi)
 library(htmlwidgets)
 library(lsa)
@@ -35,6 +36,13 @@ data
 First convert the data table into a list of vectors for each article.
 
 ```{r}
+# Function to normalize a vector
+normalize_vector <- function(vec) {
+  sum_vec <- sum(vec)
+  if (sum_vec == 0) return(vec)  # Avoid division by zero
+  vec / sum_vec
+}
+
 # Create a smaller dataset containing chosen number of articles because the dataset contains too many articles
 small_data <- filter(data, article_id <= 1000)
 
@@ -51,13 +59,16 @@ for (x in unique(small_data$article_id)) {
     word_count <- as.integer(article_data[i, 'word_occurrences'])
     article_vector[word_index] <- word_count
   }
-  
+
+  # Normalize the vector
+  article_vector <- normalize_vector(article_vector)
+   
   # Add data from data table into article vector
   vector_list[[x]] <- article_vector
   
   # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
- if(x %% 100 == 0) {
-    cat("processed ", x)
+  if(x %% 100 == 0) {
+    cat("processed ", x, "\n")
   }
 }
 
@@ -112,6 +123,7 @@ return(cosine_similarity_matrix)
 }
 
 cosine_similarity_matrix <- basic_algorithm(vector_list)
+print(cosine_similarity_matrix)
 ```
 
 Now let's use the profvis package to measure the efficiency of the basic algorithm that uses cosine similarity.
@@ -138,51 +150,50 @@ Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) alg
 ```{r}
 names(vector_list) <- as.character(unique(small_data$article_id))
 
+# Function to normalize a vector
+normalize_vector <- function(vec) {
+  vec / sum(vec)
+}
+
 # Function to compute SimHash value
-compute_simHash <- function(vector, hash_size = 64) {
-  # Initialize bit vector
-  bit_vector <- rep(0, hash_size)
-  
-  # Compute hash for each bit position
-  for (i in 1:hash_size) {
-    bit_sum <- sum(vector * (i %% 2 * 2 - 1))
-    bit_vector[i] <- ifelse(bit_sum >= 0, 1, 0)
+compute_simHash <- function(vector_list, hash_size = 64) {
+  vector_list1 <- normalize_vector(vector_list)
+  v <- numeric(hash_size)
+  for (word in names(vector_list1)) {
+    hash <- digest(word, algo = "murmur32", serialize = FALSE)
+    bin <- as.integer(intToBits(strtoi(hash, 16L))[1:hash_size])
+    v <- v + (bin * 2 - 1) * vector_list1[word]
   }
-  
-  # Convert bit vector to string
-  simhash <- paste(bit_vector, collapse = "")
-  return(simhash)
+  fingerprint <- as.integer(v > 0)
+  return(fingerprint)
 }
 
 # Function to calculate Hamming distance
 hamming_distance <- function(hash1, hash2) {
-  sum(strsplit(hash1, NULL)[[1]] != strsplit(hash2, NULL)[[1]])
+  sum(hash1 != hash2)
 }
 
 # Main function to compute similarity matrix
 simHash_algorithm <- function(vector_list, hash_size = 64) {
-  # Compute SimHash for each article
-  simhash_list <- list()
-  for (article_id in names(vector_list)) {
-    article_vector <- vector_list[[article_id]]
-    simhash <- compute_simHash(article_vector, hash_size)
-    simhash_list[[article_id]] <- simhash
-  }
-  
-  # Compute pairwise similarity scores (Hamming distance matrix)
+  simhash_list <- lapply(vector_list, compute_simHash, hash_size = hash_size)
   article_ids <- names(simhash_list)
   num_articles <- length(article_ids)
   simHash_similarity_matrix <- matrix(0, nrow = num_articles, ncol = num_articles)
   rownames(simHash_similarity_matrix) <- article_ids
   colnames(simHash_similarity_matrix) <- article_ids
-
-  for (i in 1:num_articles) {
-    for (j in i:num_articles) {
-      if (article_ids[i] %in% names(simhash_list) && article_ids[j] %in% names(simhash_list)) {
-        dist <- hamming_distance(simhash_list[[article_ids[i]]], simhash_list[[article_ids[j]]])
-        simHash_similarity_matrix[i, j] <- dist
-        # The matrix is symmetric
-        simHash_similarity_matrix[j, i] <- dist 
+  
+  for (i in seq_len(num_articles)) {
+    for (j in seq_len(num_articles)) {
+      if (i <= j) {
+        # Calculate Hamming distance
+        dist <- hamming_distance(simhash_list[[i]], simhash_list[[j]])
+        
+        # Convert distance to similarity score
+        sim <- 1 - dist / hash_size
+        
+        # Populate the matrix
+        simHash_similarity_matrix[i, j] <- sim
+        simHash_similarity_matrix[j, i] <- sim
       }
     }
   }
@@ -190,6 +201,8 @@ simHash_algorithm <- function(vector_list, hash_size = 64) {
 }
 
 simHash_similarity_matrix <- simHash_algorithm(vector_list)
+
+simHash_similarity_matrix
 ```
 
 Now let's use the profvis package to measure the efficiency of the SimHash algorithm.
@@ -281,4 +294,35 @@ print(paste("Accuracy for Cosine Similarity:", accuracy_cosine))
 # Extract accuracy from the confusion matrix
 accuracy_simHash <- confusion_simHash$overall['Accuracy']
 print(paste("Accuracy for SimHash:", accuracy_simHash))
+```
+
+```{r}
+plot_data <- data.frame(
+  Algorithm = c("Algorithm 1", "Algorithm 2"),
+  Accuracy = c(accuracy_cosine, accuracy_simHash),  # Example accuracy values
+  Time = c(15000, 760)
+)
+
+# Create a bar plot
+ggplot(plot_data, aes(x = Algorithm, y = Accuracy, fill = Algorithm)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_fill_manual(values = c("Algorithm 1" = "blue", "Algorithm 2" = "red")) +
+  labs(title = "Accuracy Comparison of Similarity Search Algorithms",
+       x = "Algorithm",
+       y = "Accuracy") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Alternatively, create a point plot
+ggplot(data, aes(x = Algorithm, y = Accuracy, color = Algorithm)) +
+  geom_point(size = 5) +
+  geom_segment(aes(x = Algorithm, xend = Algorithm, y = 0, yend = Accuracy), size = 1) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_color_manual(values = c("Algorithm 1" = "blue", "Algorithm 2" = "red")) +
+  labs(title = "Accuracy Comparison of Similarity Search Algorithms",
+       x = "Algorithm",
+       y = "Accuracy") +
+  theme_minimal() +
+  theme(legend.position = "none")
 ```

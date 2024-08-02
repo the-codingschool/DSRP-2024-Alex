@@ -291,4 +291,4 @@ Let's now use our function from earlier to check how many words articles 904 and
 compare_articles(data, vocab, 904, 893)
 ```
 
-The two articles with the 200th highest similarity score differ by 8 words. However, since we will be using the SimHash algorithm in the analysis, we can test further for accuracy because SimHash combines near duplicate articles.
+The two articles with the 200th highest similarity score differ by 8 words. However, since we will be using cosine similarity algorithms in analysis, we don't need to clean the data by removing near duplicate articles because cosine similarity algorithms automatically combine near duplicate articles.
