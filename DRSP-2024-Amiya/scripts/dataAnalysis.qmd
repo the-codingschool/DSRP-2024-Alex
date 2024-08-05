@@ -36,19 +36,10 @@ data
 First convert the data table into a list of vectors for each article.
 
 ```{r}
-# Function to normalize a vector
-normalize_vector <- function(vec) {
-  sum_vec <- sum(vec)
-  if (sum_vec == 0) return(vec)  # Avoid division by zero
-  vec / sum_vec
-}
-
 # Create a smaller dataset containing chosen number of articles because the dataset contains too many articles
 small_data <- filter(data, article_id <= 1000)
-
 colnames(vocab) <- c("word")
 vocab_vector <- setNames(1:nrow(vocab), vocab$word)
-
 vector_list <- list()
 for (x in unique(small_data$article_id)) {
   article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
@@ -59,19 +50,15 @@ for (x in unique(small_data$article_id)) {
     word_count <- as.integer(article_data[i, 'word_occurrences'])
     article_vector[word_index] <- word_count
   }
-
-  # Normalize the vector
-  article_vector <- normalize_vector(article_vector)
-   
+  
   # Add data from data table into article vector
   vector_list[[x]] <- article_vector
   
   # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
-  if(x %% 100 == 0) {
-    cat("processed ", x, "\n")
+ if(x %% 100 == 0) {
+    cat("processed ", x)
   }
 }
-
 # Print the vectors and dataframes for verification
 vector1 = vector_list[[1]]
 vector2 = vector_list[[2]]
@@ -156,12 +143,13 @@ normalize_vector <- function(vec) {
 }
 
 # Function to compute SimHash value
-compute_simHash <- function(vector_list, hash_size = 64) {
+compute_simHash <- function(vector_list, hash_size = 256) {
   vector_list1 <- normalize_vector(vector_list)
   v <- numeric(hash_size)
   for (word in names(vector_list1)) {
     hash <- digest(word, algo = "murmur32", serialize = FALSE)
-    bin <- as.integer(intToBits(strtoi(hash, 16L))[1:hash_size])
+    # Convert the hash to binary and extract the first 64 bits
+    bin <- as.integer(intToBits(strtoi(substr(hash, 1, 16), 16L))[1:hash_size])
     v <- v + (bin * 2 - 1) * vector_list1[word]
   }
   fingerprint <- as.integer(v > 0)
@@ -174,7 +162,7 @@ hamming_distance <- function(hash1, hash2) {
 }
 
 # Main function to compute similarity matrix
-simHash_algorithm <- function(vector_list, hash_size = 64) {
+simHash_algorithm <- function(vector_list, hash_size = 256) {
   simhash_list <- lapply(vector_list, compute_simHash, hash_size = hash_size)
   article_ids <- names(simhash_list)
   num_articles <- length(article_ids)
@@ -220,6 +208,37 @@ Save the SimHash algorithm profvis profile as an HTML file.
 
 ```{r}
 saveWidget(simHash_algorithm_prof_results, file = "simHash_algorithm_profvis_profile.html")
+```
+
+Now lets plot the time and memory that each of the algorithms take in a graph
+
+```{r}
+# Create the data frame
+plot_time_data <- data.frame(
+  Algorithm = c("Basic Cosine Similarity", "SimHash"),
+  Time = c(15790, 630),
+  Memory = c(103.2, 5.5)
+)
+
+# Plot for Time
+ggplot(plot_time_data, aes(x = Algorithm, y = Time, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Time Usage by Algorithm",
+       x = "Algorithm",
+       y = "Time (ms)",
+       fill = "Algorithm") +
+  theme_minimal()
+
+# Plot for Memory
+ggplot(plot_time_data, aes(x = Algorithm, y = Memory, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Memory Usage by Algorithm",
+       x = "Algorithm",
+       y = "Memory (bytes)",
+       fill = "Algorithm") +
+  theme_minimal()
 ```
 
 **Accuracy**
@@ -296,30 +315,18 @@ accuracy_simHash <- confusion_simHash$overall['Accuracy']
 print(paste("Accuracy for SimHash:", accuracy_simHash))
 ```
 
+Now let's plot the accuracy of the two algorithms in a graph.
+
 ```{r}
 plot_data <- data.frame(
-  Algorithm = c("Algorithm 1", "Algorithm 2"),
-  Accuracy = c(accuracy_cosine, accuracy_simHash),  # Example accuracy values
-  Time = c(15000, 760)
-)
+  Algorithm = c("Basic Cosine Similarity", "SimHash"),
+  Accuracy = c(accuracy_cosine, accuracy_simHash))
 
 # Create a bar plot
 ggplot(plot_data, aes(x = Algorithm, y = Accuracy, fill = Algorithm)) +
   geom_bar(stat = "identity", width = 0.5) +
   scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
-  scale_fill_manual(values = c("Algorithm 1" = "blue", "Algorithm 2" = "red")) +
-  labs(title = "Accuracy Comparison of Similarity Search Algorithms",
-       x = "Algorithm",
-       y = "Accuracy") +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-# Alternatively, create a point plot
-ggplot(data, aes(x = Algorithm, y = Accuracy, color = Algorithm)) +
-  geom_point(size = 5) +
-  geom_segment(aes(x = Algorithm, xend = Algorithm, y = 0, yend = Accuracy), size = 1) +
-  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
-  scale_color_manual(values = c("Algorithm 1" = "blue", "Algorithm 2" = "red")) +
+  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
   labs(title = "Accuracy Comparison of Similarity Search Algorithms",
        x = "Algorithm",
        y = "Accuracy") +
