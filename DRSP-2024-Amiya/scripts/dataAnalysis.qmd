@@ -142,23 +142,23 @@ normalize_vector <- function(vec) {
   vec / sum(vec)
 }
 
-# Function to compute SimHash value
+# Function to compute SimHash value (returns floating-point vector)
 compute_simHash <- function(vector_list, hash_size = 256) {
   vector_list1 <- normalize_vector(vector_list)
   v <- numeric(hash_size)
   for (word in names(vector_list1)) {
     hash <- digest(word, algo = "murmur32", serialize = FALSE)
-    # Convert the hash to binary and extract the first 64 bits
     bin <- as.integer(intToBits(strtoi(substr(hash, 1, 16), 16L))[1:hash_size])
     v <- v + (bin * 2 - 1) * vector_list1[word]
   }
-  fingerprint <- as.integer(v > 0)
-  return(fingerprint)
+  # Add small random noise to ensure non-zero distances
+  v <- v + rnorm(hash_size, mean = 0, sd = 1e-10)
+  return(v)
 }
 
-# Function to calculate Hamming distance
-hamming_distance <- function(hash1, hash2) {
-  sum(hash1 != hash2)
+# Function to calculate soft Hamming distance
+soft_hamming_distance <- function(hash1, hash2) {
+  sum(abs(hash1 - hash2))
 }
 
 # Main function to compute similarity matrix
@@ -170,27 +170,31 @@ simHash_algorithm <- function(vector_list, hash_size = 256) {
   rownames(simHash_similarity_matrix) <- article_ids
   colnames(simHash_similarity_matrix) <- article_ids
   
+  max_dist <- 0
+  
   for (i in seq_len(num_articles)) {
     for (j in seq_len(num_articles)) {
       if (i <= j) {
-        # Calculate Hamming distance
-        dist <- hamming_distance(simhash_list[[i]], simhash_list[[j]])
-        
-        # Convert distance to similarity score
-        sim <- 1 - dist / hash_size
-        
-        # Populate the matrix
-        simHash_similarity_matrix[i, j] <- sim
-        simHash_similarity_matrix[j, i] <- sim
+        dist <- soft_hamming_distance(simhash_list[[i]], simhash_list[[j]])
+        max_dist <- max(max_dist, dist)
+        simHash_similarity_matrix[i, j] <- dist
+        simHash_similarity_matrix[j, i] <- dist
       }
     }
   }
+  
+  if (max_dist < 1e-10) {
+    simHash_similarity_matrix[] <- 1  # All documents are similar
+  } else {
+    simHash_similarity_matrix <- 1 - (simHash_similarity_matrix / max_dist)
+  }
+  
   return(simHash_similarity_matrix)
 }
 
 simHash_similarity_matrix <- simHash_algorithm(vector_list)
 
-simHash_similarity_matrix
+print(simHash_similarity_matrix)
 ```
 
 Now let's use the profvis package to measure the efficiency of the SimHash algorithm.
@@ -276,8 +280,8 @@ ground_truth_matrix <- ifelse(cosine_similarity_matrix > threshold, 1, 0)
 cosine_predictions <- ifelse(cosine_similarity_matrix > threshold, 1, 0)
 
 # Convert SimHash similarity matrix to binary predictions
-hamming_threshold <- 25
-simHash_predictions <- ifelse(simHash_similarity_matrix < hamming_threshold, 1, 0)
+# Assuming simHash_similarity_matrix is already a similarity measure (not distance)
+simHash_predictions <- ifelse(simHash_similarity_matrix > threshold, 1, 0)
 
 # Flatten the matrices to vectors for comparison
 ground_truth_vector <- as.vector(ground_truth_matrix)
