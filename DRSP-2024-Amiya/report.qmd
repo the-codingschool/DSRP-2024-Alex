@@ -6,7 +6,7 @@ format: html
 editor: visual
 ---
 
-# Efficiency with SimHash similarity search algorithm is not worth the loss in accuracy
+# SimHash: Boosting Efficiency in Similarity Search with Minimal Accuracy Loss
 
 Amiya Harish
 
@@ -18,7 +18,7 @@ results + conclusion
 
 ## Background
 
-The dataset I use consists of articles from the New York Times and all the words that each article contains. My research question aims to decide whether the loss in accuracy of a similarity search algorithm using SimHash is worth the efficiency. I chose this research question because SimHash is widely recognized as the fastest similarity search algorithm that uses cosine similarity. I wanted to compare algorithms using cosine similarity and not Jaccard similarity because while cleaning my data I found that many articles in the dataset had near duplicate articles and cosine similarity algorithms automatically combine near duplicate articles. This research question is important because as technology improves, we need to work to find the most efficient methods of computing everything- however, we must ensure that this does not come at the cost of too much of loss in accuracy. Before beginning this project, I hypothesized that the loss of accuracy would be worth the efficiency when using SimHash.
+The dataset I use consists of articles from the New York Times and all the words that each article contains. My research question aims to decide whether the loss in accuracy of a similarity search algorithm using SimHash is worth the efficiency. I chose this research question because SimHash is widely recognized as the fastest similarity search algorithm that uses cosine similarity. I wanted to compare algorithms using cosine similarity and not Jaccard similarity because while cleaning my data I found that many articles in the dataset had near duplicate articles and cosine similarity algorithms automatically combine near duplicate articles. This research question is important because as technology improves, we need to work to find the most efficient methods of computing everything- however, we must ensure that this does not come at the cost of too much of loss in accuracy. Before beginning this project, I hypothesized that the loss of accuracy would be worth the efficiency when using SimHash based on my previous research.
 
 ## Figures
 
@@ -90,7 +90,7 @@ Next, I calculated the accuracy of each algorithm.
 ```{r}
 plot_data <- data.frame(
   Algorithm = c("Basic Cosine Similarity", "SimHash"),
-  Accuracy = c(1, 0.00211))
+  Accuracy = c(1, 0.99889))
 
 # Create a bar plot
 ggplot(plot_data, aes(x = Algorithm, y = Accuracy, fill = Algorithm)) +
