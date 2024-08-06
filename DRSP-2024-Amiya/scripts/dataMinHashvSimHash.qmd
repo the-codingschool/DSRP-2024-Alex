@@ -71,60 +71,6 @@ print(vector1)
 print(vector2)
 ```
 
-**Basic algorithm for calculating similarity scores using cosine similarity**
-
-The cosine similarity matrix consists of n x n entries of the form (i, j), representing the cosine similarity between vector i and vector j. The matrix is symmetric, and diagonal entries represent the similarity of each vector with itself (which equals 1, unless there are any zero vectors).
-
-```{r}
-basic_algorithm <- function(vector_list) {
-
-# Number of vectors
-n <- length(vector_list)
-
-# Compute vector magnitudes
-# the sapply function is used to apply a function to each vector in vector_list
-vector_magnitudes <- sapply(vector_list, function(vec) sqrt(sum(vec^2)))
-
-# Create a matrix for the cosine similarity
-cosine_similarity_matrix <- matrix(0, n, n)
-
-# Compute pairwise cosine similarity
-for (i in 1:n) {
-  for (j in i:n) {
-    # Compute dot product
-    dot_product <- as.integer(vector_list[[i]] %*% vector_list[[j]])
-    
-    # Get magnitudes
-    magnitude_i <- vector_magnitudes[i]
-    magnitude_j <- vector_magnitudes[j]
-    
-    # Calculate cosine similarity
-    if (magnitude_i == 0 || magnitude_j == 0) {
-      cosine_similarity_matrix[i, j] <- NA  # If the vector is empty
-    } else {
-      cosine_similarity_matrix[i, j] <- dot_product / (magnitude_i * magnitude_j)
-    }
-    
-    # Since cosine similarity is symmetric, copy the value to complete the rest of the matrix
-    cosine_similarity_matrix[j, i] <- cosine_similarity_matrix[i, j]
-    }
-  }
-}
-
-cosine_similarity_matrix <- basic_algorithm(vector_list)
-```
-
-Now let's use the profvis package to measure the efficiency of the basic algorithm that uses cosine similarity.
-
-```{r}
-# Profile the algorithm
-basic_algorithm_prof_results <- profvis({
- basic_algorithm(vector_list)
-})
-
-basic_algorithm_prof_results
-```
-
 **Locality Sensitive Hashing (LSH) algorithm: MinHash**
 
 Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called MinHash to perform the same task of finding similarity scores.
@@ -198,4 +144,119 @@ Save the MinHash algorithm profvis profile as an HTML file.
 saveWidget(minHash_algorithm_prof_results, file = "minHash_algorithm_profvis_profile.html")
 ```
 
-However, we now realize that we are somewhat comparing apples to oranges because our basic algorithm uses cosine similarity and MinHash uses Jaccard similarity. Let us try using a different LSH algorithm called SimHash that uses cosine similarity unlike MinHash.
+MinHash uses Jaccard similarity to compute similarity. Let us now try using a different LSH algorithm called SimHash that uses cosine similarity unlike MinHash.
+
+**Locality Sensitive Hashing (LSH) algorithm: SimHash**
+
+Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called SimHash to perform the same task of finding similarity scores.
+
+```{r}
+names(vector_list) <- as.character(unique(small_data$article_id))
+
+# Function to normalize a vector
+normalize_vector <- function(vec) {
+  vec / sum(vec)
+}
+
+# Function to compute SimHash value (returns floating-point vector)
+compute_simHash <- function(vector_list, hash_size = 256) {
+  vector_list1 <- normalize_vector(vector_list)
+  v <- numeric(hash_size)
+  for (word in names(vector_list1)) {
+    hash <- digest(word, algo = "murmur32", serialize = FALSE)
+    bin <- as.integer(intToBits(strtoi(substr(hash, 1, 16), 16L))[1:hash_size])
+    v <- v + (bin * 2 - 1) * vector_list1[word]
+  }
+  # Add small random noise to ensure non-zero distances
+  v <- v + rnorm(hash_size, mean = 0, sd = 1e-10)
+  return(v)
+}
+
+# Function to calculate soft Hamming distance
+soft_hamming_distance <- function(hash1, hash2) {
+  sum(abs(hash1 - hash2))
+}
+
+# Main function to compute similarity matrix
+simHash_algorithm <- function(vector_list, hash_size = 256) {
+  simhash_list <- lapply(vector_list, compute_simHash, hash_size = hash_size)
+  article_ids <- names(simhash_list)
+  num_articles <- length(article_ids)
+  simHash_similarity_matrix <- matrix(0, nrow = num_articles, ncol = num_articles)
+  rownames(simHash_similarity_matrix) <- article_ids
+  colnames(simHash_similarity_matrix) <- article_ids
+  
+  max_dist <- 0
+  
+  for (i in seq_len(num_articles)) {
+    for (j in seq_len(num_articles)) {
+      if (i <= j) {
+        dist <- soft_hamming_distance(simhash_list[[i]], simhash_list[[j]])
+        max_dist <- max(max_dist, dist)
+        simHash_similarity_matrix[i, j] <- dist
+        simHash_similarity_matrix[j, i] <- dist
+      }
+    }
+  }
+  
+  if (max_dist < 1e-10) {
+    simHash_similarity_matrix[] <- 1  # All documents are similar
+  } else {
+    simHash_similarity_matrix <- 1 - (simHash_similarity_matrix / max_dist)
+  }
+  
+  return(simHash_similarity_matrix)
+}
+
+simHash_similarity_matrix <- simHash_algorithm(vector_list)
+
+print(simHash_similarity_matrix)
+```
+
+Now let's use the profvis package to measure the efficiency of the SimHash algorithm.
+
+```{r}
+# Profile the algorithm
+simHash_algorithm_prof_results <- profvis({
+ simHash_algorithm(vector_list)
+})
+
+simHash_algorithm_prof_results
+```
+
+Save the SimHash algorithm profvis profile as an HTML file.
+
+```{r}
+saveWidget(simHash_algorithm_prof_results, file = "simHash_algorithm_profvis_profile.html")
+```
+
+Now lets plot the time and memory that each of the algorithms take in a graph
+
+```{r}
+# Create the data frame
+plot_time_data <- data.frame(
+  Algorithm = c("MinHash", "SimHash"),
+  Time = c(790, 630),
+  Memory = c(92, 5.5)
+)
+
+# Plot for Time
+ggplot(plot_time_data, aes(x = Algorithm, y = Time, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("MinHash" = "blue", "SimHash" = "red")) +
+  labs(title = "Time Usage by Algorithm",
+       x = "Algorithm",
+       y = "Time (ms)",
+       fill = "Algorithm") +
+  theme_minimal()
+
+# Plot for Memory
+ggplot(plot_time_data, aes(x = Algorithm, y = Memory, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("MinHash" = "blue", "SimHash" = "red")) +
+  labs(title = "Memory Usage by Algorithm",
+       x = "Algorithm",
+       y = "Memory (bytes)",
+       fill = "Algorithm") +
+  theme_minimal()
+```
