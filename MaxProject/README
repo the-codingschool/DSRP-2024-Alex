@@ -1,1 +1,5 @@
-This is a data science research project on efficient algorithms.
+Because of the 25 MB size limit, I have not uploaded the "The Indian Express" article data or word2vec data to github. All of the files accessed in data_modeling_word2vec for "The Indian Express" can be found at this dropbox link:
+https://www.dropbox.com/scl/fo/l6bqn3swyfmoqok1om3bl/AJiPN9RaglzOiuotbq31gLg?rlkey=osj2vlev33wi6cxyrjncq810t&st=9nvkq0vf&dl=0
+Articles sourced from "The Indian Express": https://www.kaggle.com/datasets/banuprakashv/news-articles-classification-dataset-for-nlp-and-ml
+Word2Vec sourced from Google: https://www.kaggle.com/datasets/umbertogriffo/googles-trained-word2vec-model-in-python
+Previous Experimentation done on New York Times Bag of Words Data: https://archive.ics.uci.edu/dataset/164/bag+of+words
