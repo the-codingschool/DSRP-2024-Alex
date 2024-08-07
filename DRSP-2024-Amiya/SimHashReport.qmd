@@ -1,0 +1,138 @@
+---
+title: "report"
+execute:
+  echo: false
+format: html
+editor: visual
+---
+
+# SimHash: Boosting Efficiency in Similarity Search with Minimal Accuracy Loss
+
+Amiya Harish
+
+## Abstract
+
+My research question asks if the loss in accuracy of a similarity search algorithm using SimHash worth the efficiency. I determine this by comparing the performance metrics of an algorithm using SimHash and the basic cosine similarity algorithm. I created a vector for each article in the New York Times articles dataset with the number of times each word in the full word list appears in each article. I then used this vector list to find similarity scores using different algorithms. The dataset is very large, with 300,000 articles, however, in order for my computer to be able to handle the program I took a subset of the first 1000 articles to run the algorithms on.
+
+results + conclusion
+
+## Background
+
+The dataset I use consists of articles from the New York Times and all the words that each article contains. My research question aims to decide whether the loss in accuracy of a similarity search algorithm using SimHash is worth the efficiency. I chose this research question because SimHash is widely recognized as the fastest similarity search algorithm that uses cosine similarity. I wanted to compare algorithms using cosine similarity and not Jaccard similarity because while cleaning my data I found that many articles in the dataset had near duplicate articles and cosine similarity algorithms automatically combine near duplicate articles. This research question is important because as technology improves, we need to work to find the most efficient methods of computing everything- however, we must ensure that this does not come at the cost of too much of loss in accuracy. Before beginning this project, I hypothesized that the loss of accuracy would be worth the efficiency when using SimHash based on my previous research.
+
+## Figures
+
+```{r setup}
+#| echo: FALSE
+
+library(caret)
+library(scales)
+library(digest)
+library(stringi)
+library(htmlwidgets)
+library(lsa)
+library(Matrix)
+library(textreuse)
+library(profvis)
+library(data.table) # this library contains the fread() function
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(pheatmap) # for clustering and reordering
+```
+
+I first calculated the time and memory performance metrics for each of the algorithms.
+
+```{r}
+#| echo: FALSE
+
+# Create the data frame
+plot_time_data <- data.frame(
+  Algorithm = c("Basic Cosine Similarity", "SimHash"),
+  Time = c(15790, 630),
+  Memory = c(103.2, 5.5)
+)
+
+# Plot for Time
+ggplot(plot_time_data, aes(x = Algorithm, y = Time, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Time Usage by Algorithm",
+       x = "Algorithm",
+       y = "Time (ms)",
+       fill = "Algorithm") +
+  theme_minimal()
+```
+
+Above is a bar graph that shows the time it takes each algorithm to calculate similarity scores in milliseconds. It is clear that the basic cosine similarity algorithm takes almost 20 times longer than the SimHash algorithm.
+
+```{r}
+#| echo: FALSE
+
+# Create the data frame
+plot_time_data <- data.frame(
+  Algorithm = c("Basic Cosine Similarity", "SimHash"),
+  Time = c(15790, 630),
+  Memory = c(103.2, 5.5)
+)
+
+# Plot for Memory
+ggplot(plot_time_data, aes(x = Algorithm, y = Memory, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Memory Usage by Algorithm",
+       x = "Algorithm",
+       y = "Memory (bytes)",
+       fill = "Algorithm") +
+  theme_minimal()
+```
+
+Above is a bar graph that shows the memory that each algorithm takes up to calculate similarity scores in bytes. Similarly to time, is clear that the basic cosine similarity algorithm takes up almost 20 times more space than the SimHash algorithm.
+
+Next, I calculated the accuracy of each algorithm.
+
+```{r}
+#| echo: FALSE
+
+accuracy_cosine <- 1
+accuracy_simHash <- 0.99889
+
+# Create the data frame
+plot_data <- data.frame(
+  Algorithm = factor(c("Basic Cosine Similarity", "SimHash")),
+  Accuracy = c(accuracy_cosine, accuracy_simHash)
+)
+
+# Create the lollipop chart
+ggplot(plot_data, aes(x = Algorithm, y = Accuracy, color = Algorithm)) +
+  geom_segment(aes(x = Algorithm, xend = Algorithm, y = 0.9, yend = Accuracy), size = 1) +
+  geom_point(size = 4) +
+  scale_y_continuous(limits = c(0.9, 1), breaks = seq(0.9, 1, 0.01), labels = percent) +
+  scale_color_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Accuracy Comparison of Similarity Search Algorithms",
+       x = "Algorithm",
+       y = "Accuracy") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Above is a bar graph that shows the accuracy of each algorithm in calculating similarity scores by percentage. The accuracy of SimHash is extremely low in comparison with the basic cosine similarity algorithm which has 100% accuracy.
+
+## Discussion
+
+## **Code and Data Availability**
+
+All my scripts, code, and plots can be accessed through this link to my GitHub repository: <https://github.com/the-codingschool/DSRP-2024-Alex/tree/570787a68e34cc6128ea614e8098311f1b6fa5bd/DRSP-2024-Amiya>
+
+The dataset that I worked with came from the UC Irvine Machine Learning Repository Archive: <https://archive.ics.uci.edu/dataset/164/bag+of+words>
+
+## Acknowledgements
+
+I would like to acknowledge Professor Alex Andoni for introducing the dataset, providing ideas, feedback, and helping me throughout this project.
+
+I would like to acknowledge Sarah Parker for teaching me the basics of Data Science, coding in R, and writing a research paper.
+
+I would like to acknowledge Pavithra, the TA that I worked with, for teaching and helping me solve any issues that I encountered while coding.
+
+I would like to acknowledge the DSRP team, the Coding School, and Columbia University for holding this program and providing me with all the resources I needed to complete this project.
