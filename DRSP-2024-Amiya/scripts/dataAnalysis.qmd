@@ -2,6 +2,7 @@ Loading in libraries
 
 ```{r}
 library(caret)
+library(scales)
 library(digest)
 library(stringi)
 library(htmlwidgets)
@@ -322,15 +323,21 @@ print(paste("Accuracy for SimHash:", accuracy_simHash))
 Now let's plot the accuracy of the two algorithms in a graph.
 
 ```{r}
-plot_data <- data.frame(
-  Algorithm = c("Basic Cosine Similarity", "SimHash"),
-  Accuracy = c(accuracy_cosine, accuracy_simHash))
+accuracy_cosine <- 1
+accuracy_simHash <- 0.99889
 
-# Create a bar plot
-ggplot(plot_data, aes(x = Algorithm, y = Accuracy, fill = Algorithm)) +
-  geom_bar(stat = "identity", width = 0.5) +
-  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
-  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+# Create the data frame
+plot_data <- data.frame(
+  Algorithm = factor(c("Basic Cosine Similarity", "SimHash")),
+  Accuracy = c(accuracy_cosine, accuracy_simHash)
+)
+
+# Create the lollipop chart
+ggplot(plot_data, aes(x = Algorithm, y = Accuracy, color = Algorithm)) +
+  geom_segment(aes(x = Algorithm, xend = Algorithm, y = 0.9, yend = Accuracy), size = 1) +
+  geom_point(size = 4) +
+  scale_y_continuous(limits = c(0.9, 1), breaks = seq(0.9, 1, 0.01), labels = percent) +
+  scale_color_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
   labs(title = "Accuracy Comparison of Similarity Search Algorithms",
        x = "Algorithm",
        y = "Accuracy") +
