@@ -1,0 +1,580 @@
+
+```{r}
+library(data.table)
+library(hash)
+library(dplyr)
+library(emdist)
+library(Matrix)
+library(lsa)
+library(flexclust)
+library(cluster)
+library(mclust)
+library(wordcloud)
+library(RColorBrewer)
+library(RSKC)
+```
+
+```{r}
+word2vec_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/IndiaData/india_word2vec.csv'
+# Load the CSV file into a data frame
+word2vec_df <- fread(word2vec_path)
+
+# Initialize an empty hash object
+word2vec_hash <- hash()
+
+# Populate the hash with words as keys and vectors as values
+for (i in 1:nrow(word2vec_df)) {
+  word <- tolower(word2vec_df[i, 1])
+  vector <- as.numeric(word2vec_df[i, -1])
+  word2vec_hash[[word]] <- vector
+  if(i %% 100 == 0) {
+    print(i)
+  }
+}
+
+```
+
+```{r}
+# Read NYT vocab data
+nyt_vocab_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+nyt_vocab <- fread(nyt_vocab_file_path)
+colnames(nyt_vocab) <- c("word")
+nyt_vocab_vector <- nyt_vocab$word
+nyt_vocab_set <- hash(keys = nyt_vocab_vector, values = 1:length(nyt_vocab_vector))
+
+```
+
+```{r}
+# Read NYT Matrix Data
+data_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/bag_of_words_tf_idf"
+df_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/bag_of_words_df.csv"
+data <- readRDS(data_path)
+```
+
+
+
+```{r}
+# Read India vocab data
+# vocab vector has 0 indexing
+india_vocab_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/IndiaData/vocabulary.csv'
+india_vocab <- fread(india_vocab_path)
+india_vocab_vector <- tolower(india_vocab$word)
+#convert article from tf-idf vector to list of word2vec
+dataframe <- fread(df_path)
+```
+
+```{r}
+#Read original label data
+labels_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/IndiaData/category_vector.csv'
+labels_data <- fread(labels_path)
+colnames(labels_data) <- c("label")
+labels_data <- rbind(data.frame(label = "business"), labels_data)
+labels_vector <- labels_data$label
+```
+
+
+```{r}
+# add labels to dataframe
+dataframe <- dataframe |>
+cbind(label = sapply(dataframe$article_id, function(id) {
+  labels_vector[id]
+}))
+tail(dataframe)
+```
+```{r}
+# add clusters to dataframe function
+add_cluster_column <- function(dataframe, cluster_result) {
+  #append cluster to original dataframe
+  dataframe_updated <- dataframe |> cbind(word = sapply(dataframe$word_id, function(index) {
+    india_vocab_vector[index]
+  })) |> cbind(cluster = sapply(dataframe$article_id, function(id) {
+    cluster_result[id]
+  }))
+  dataframe_updated
+}
+
+# wordcloud creation function
+create_wordclouds <- function(dataframe) {
+  # Summarize total value for each word within each cluster
+  word_cluster_summary <- dataframe %>%
+    group_by(cluster, word) %>%  # Group by cluster and word
+    summarise(total_value = sum(value, na.rm = TRUE)) %>%  # Sum the value within each group
+    ungroup()  # Optional: Ungroup after summarizing
+  
+  # View the result
+  cluster_word_values <- as.data.frame(word_cluster_summary)
+  cluster_word_values
+  
+  #create wordclouds
+  op <- par(mar = c(0, 0, 0, 0))
+
+  normalize <- function(x) {
+    log_x <- log(x + 1)  # Adding 1 to avoid log(0)
+    return((log_x - min(log_x)) / (max(log_x) - min(log_x)))
+  }
+  
+  for(i in (1:max(unique(dataframe$cluster)))) {
+    cluster_df <- arrange(filter(cluster_word_values, cluster == i), desc(total_value))
+    wordcloud_df <- data.frame(word = cluster_df$word, freq = cluster_df$total_value)
+    # Normalize the TF-IDF values
+    wordcloud_df$freq <- normalize(wordcloud_df$freq)
+    # Remove 'zzz_' prefix from the word column
+    wordcloud_df$word <- gsub("^zzz_", "", wordcloud_df$word)
+    wordcloud_df <- wordcloud_df[wordcloud_df$word %in% keys(word2vec_hash), ]
+    wordcloud(words = wordcloud_df$word, freq = wordcloud_df$freq, scale=c(0.8,0.05), min.freq = summary(wordcloud_df$freq)["1st Qu."], max.words=200, random.order=FALSE, rot.per=0.0, colors=brewer.pal(8, "Dark2"))
+  }
+  par(op)
+}
+
+# Adjusted Rand Index
+calculate_ari <- function(cluster_result, dataframe) {
+  label_mapping <- dataframe %>%
+  group_by(cluster, label) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  group_by(cluster) %>%
+  slice_max(order_by = count) |>
+  select(cluster, label)
+  cluster_to_label <- hash(keys = label_mapping$cluster, values = label_mapping$label)
+  pred <- sapply(cluster_result, function(cluster) {cluster_to_label[[as.character(cluster)]]})
+  adjustedRandIndex(pred, labels_vector)
+}
+
+# Dunn Index
+calculate_dunn <- function() {
+  
+}
+
+# purity calculation function
+calculate_purity <- function(dataframe) {
+  #calculate purity scores of each cluster
+  purity_df <- dataframe %>%
+    group_by(cluster, label) %>%
+    summarise(count = n(), .groups = 'drop') %>%
+    group_by(cluster) %>%
+    summarise(cluster_purity = max(count) / sum(count), .groups = 'drop') %>%
+    arrange(desc(cluster_purity))
+  purity_df
+}
+```
+
+```{r}
+# Model 1: TF-IDF, KMeans
+ari_scores_1 = c()
+best_df_1 <- NULL
+max_ari_score_1 <- -Inf
+
+# Initialize 20 times, take best ARI score. 
+for (i in (1:20)) {
+  set.seed(i)
+  model1_results <- kcca(data, k = k, family = kccaFamily(which = "angle"), control = list(initcent = "kmeanspp", verbose = 1))
+  updated_dataframe <- add_cluster_column(dataframe, model1_results@cluster)
+  ari_score <- calculate_ari(model1_results@cluster, updated_dataframe)
+  cat("ARI score", i, ":", ari_score)
+  ari_scores_1 <- c(ari_scores_1, ari_score)
+  if(ari_score > max_ari_score_1) {
+    best_df_1 <- updated_dataframe
+    max_ari_score_1 <- ari_score
+  }
+}
+```
+```{r}
+dim(data)
+```
+
+```{r}
+# Create wordclouds based on initialization with best ARI score. 
+cat("Best ARI Score: ", max_ari_score_1)
+create_wordclouds(best_df_1)
+```
+
+
+
+```{r}
+# Model 2: TF-IDF, PCA, KMeans
+dense_matrix <- as.matrix(data)
+#remove zero variance columns
+zero_var_columns <- apply(dense_matrix, 2, var) == 0 #param: apply(matrix, dimension, function)
+filtered_dense_matrix <- dense_matrix[, !zero_var_columns]
+# dont need scaling since tf-idf alrleady does that 
+# Reduce dimensionality using PCA (takes ~five minutes to run with input size 1992)
+#pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
+#reduced_matrix <- pca_result$x
+reduced_matrix <- readRDS("/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/india_PCA.rds")
+```
+
+```{r}
+k = 5
+ari_scores_2 = c()
+best_df_2 <- NULL
+max_ari_score_2 <- -Inf
+dim(reduced_matrix)
+for (i in (1:20)) {
+  set.seed(i)
+  kcca_result <- kcca(reduced_matrix, k = k, family = kccaFamily(which = "angle"), control = list(initcent = "kmeanspp", verbose = 1))
+  updated_dataframe <- add_cluster_column(dataframe, kcca_result@cluster)
+  ari_score <- calculate_ari(kcca_result@cluster, updated_dataframe)
+  cat("ARI score", i, ":", ari_score)
+  ari_scores_2 <- c(ari_scores_2, ari_score)
+  if(ari_score > max_ari_score_2) {
+    best_df_2 <- updated_dataframe
+    max_ari_score_2 <- ari_score
+  }
+}
+```
+```{r}
+cat("Best ARI Score: ", max_ari_score_2)
+create_wordclouds(best_df_2)
+```
+
+
+```{r}
+# create matrices for each article, and corresponding tf-idf weights.
+# used for model 3 and model 4
+article_matrix_list <- list()
+weight_vector_list <- list()
+num_words <- 200
+for(article in (1:nrow(data))) {
+  article_df <- arrange(filter(dataframe, article_id == article), desc(value))
+  article_vectors <- matrix(nrow = 0, ncol = 300)
+  article_weights <- numeric()
+  for(i in (1:num_words)) {
+    if(i > nrow(article_df)) {
+      break
+    }
+    word <- india_vocab_vector[article_df[i, word_id]]
+    # if (startsWith(word, "zzz_")) {
+     # word <- substr(word, 5, nchar(word))
+    # }
+    
+    word_vec <- word2vec_hash[[word]]
+    weight <- article_df[i, value]
+    if(!is.null(word_vec)) {
+      article_vectors <- rbind(article_vectors, word_vec)
+      article_weights <- c(article_weights, weight)
+    }
+  }
+  article_matrix_list[[article]] <- article_vectors
+  weight_vector_list[[article]] <- article_weights
+  if(article %% 100 == 0) {
+    print(article)
+  }
+}
+```
+
+```{r}
+# PCA of word vectors (didn't end up using)
+# Step 1: Combine word vectors from all articles
+all_word_vectors <- do.call(rbind, lapply(article_matrix_list, function(mat) mat))
+dim(all_word_vectors)
+
+# Step 2: Fit PCA on the combined data
+pca_result <- prcomp(all_word_vectors, center = TRUE, scale. = TRUE)
+summary(pca_result)
+dim(pca_result$x)
+
+# Step 3: Transform each article's word vectors using the fitted PCA model
+# Reduce to a desired number of dimensions, say 50
+reduced_dimension <- 300
+
+article_matrix_list_reduced <- lapply(article_matrix_list, function(mat) {
+  predict(pca_result, newdata = mat)[, 1:reduced_dimension]
+})
+
+# Now you have a list of reduced-dimensional word vectors for each article
+```
+
+
+```{r}
+# Model 4: average Word2Vec with kmeans
+# Calculate average of all words for each article
+# Adjust number of words per article as hyperparameter
+
+matrix_averages <- matrix(nrow = 0, ncol = 300)
+for(i in 1:nrow(data)) {
+  article_matrix <- article_matrix_list[[i]]
+  article_weights <- weight_vector_list[[i]]
+  matrix_average <- numeric(300)
+  article_matrix <- as.matrix(article_matrix)
+  if(dim(article_matrix)[1] == 300) {
+    article_matrix <- t(article_matrix)
+  }
+  for (j in 1:nrow(article_matrix)) {
+    matrix_average <- matrix_average + (article_matrix[j,] * article_weights[j])
+  }
+  matrix_average <- matrix_average / nrow(article_matrix)
+  matrix_averages <- rbind(matrix_averages, matrix_average)
+}
+```
+
+```{r}
+k = 5
+ari_scores_4 = c()
+best_df_4 <- NULL
+max_ari_score_4 <- -Inf
+for (i in (1:20)) {
+  set.seed(i)
+  kcca_result <- kcca(matrix_averages, k = k, family = kccaFamily(which = "angle"), control = list(initcent = "kmeanspp", verbose = 1))
+  updated_dataframe <- add_cluster_column(dataframe, kcca_result@cluster)
+  ari_score <- calculate_ari(kcca_result@cluster, updated_dataframe)
+  cat("ARI score", i, ":", ari_score)
+  ari_scores_4 <- c(ari_scores_4, ari_score)
+  if(ari_score > max_ari_score_4) {
+    best_df_4 <- updated_dataframe
+    max_ari_score_4 <- ari_score
+  }
+}
+```
+
+
+```{r}
+#results for word2vec average method
+cat("Best ARI Score: ", max_ari_score_4)
+create_wordclouds(updated_dataframe)
+```
+
+```{r}
+# Model 3: Word2Vec Chamfer Distance KMedians
+# Function to calculate Chamfer Distance between two sets of weighted vectors
+chamfer_distance <- function(vectors1, vectors2) {
+  # Calculate distance from each vector in vectors1 to the nearest vector in vectors2
+  min_dist_1_to_2 <- apply(vectors1, 1, function(vec1) {
+    # Subtract vec1 from each row of vectors2
+    diff_matrix <- sweep(vectors2, 2, vec1, "-")
+    
+    # Calculate the Euclidean distance
+    min(sqrt(rowSums(diff_matrix^2))) #minimum euclidean distance between vec1 and vectors2
+  })
+  
+  # Calculate distance from each vector in vectors2 to the nearest vector in vectors1
+  min_dist_2_to_1 <- apply(vectors2, 1, function(vec2) {
+    diff_matrix <- sweep(vectors1, 2, vec2, "-")
+    min(sqrt(rowSums(diff_matrix^2)))
+  })
+  
+  # Sum of distances
+  chamfer_dist <- sum(min_dist_1_to_2) + sum(min_dist_2_to_1)
+  
+  return(chamfer_dist)
+}
+```
+
+
+```{r}
+# Compute the distance matrix (takes an hour for n = 1992)
+n <- length(article_matrix_list)
+distance_matrix <- matrix(0, n, n)
+
+for (i in 1:(n-1)) {
+  for (j in (i+1):n) {
+    dist_ij <- chamfer_distance(article_matrix_list[[i]], article_matrix_list[[j]])
+    distance_matrix[i, j] <- dist_ij
+    distance_matrix[j, i] <- dist_ij  # Since distance matrix is symmetric
+  }
+  cat("processed ", i)
+}
+```
+
+```{r}
+# Use Parallel Processing to create distance matrix
+library(parallel)
+library(doParallel)
+
+# Define your chamfer_distance function here
+chamfer_distance <- function(vectors1, vectors2) {
+  # Calculate distance from each vector in vectors1 to the nearest vector in vectors2
+  min_dist_1_to_2 <- apply(vectors1, 1, function(vec1) {
+    # Subtract vec1 from each row of vectors2
+    diff_matrix <- sweep(vectors2, 2, vec1, "-")
+    
+    # Calculate the Euclidean distance
+    min(sqrt(rowSums(diff_matrix^2))) #minimum euclidean distance between vec1 and vectors2
+  })
+  
+  # Calculate distance from each vector in vectors2 to the nearest vector in vectors1
+  min_dist_2_to_1 <- apply(vectors2, 1, function(vec2) {
+    diff_matrix <- sweep(vectors1, 2, vec2, "-")
+    min(sqrt(rowSums(diff_matrix^2)))
+  })
+  
+  # Sum of distances
+  chamfer_dist <- sum(min_dist_1_to_2) + sum(min_dist_2_to_1)
+  
+  return(chamfer_dist)
+}
+
+# Function to compute distances for a chunk of pairs
+compute_chunk <- function(chunk, article_matrix_list) {
+  chunk_results <- matrix(0, nrow = nrow(chunk), ncol = 3)
+  for (k in 1:nrow(chunk)) {
+    i <- chunk[k, 1]
+    j <- chunk[k, 2]
+    tryCatch({
+      dist_ij <- chamfer_distance(article_matrix_list[[i]], article_matrix_list[[j]])
+      chunk_results[k,] <- c(i, j, dist_ij)
+    }, error = function(e) {
+      chunk_results[k,] <- c(i, j, NA)
+      warning(paste("Error in pair", i, j, ":", e$message))
+    })
+  }
+  return(chunk_results)
+}
+
+# Main function
+compute_distance_matrix <- function(article_matrix_list, num_cores = detectCores() - 1) {
+  n <- length(article_matrix_list)
+  
+  # Create all pairs of indices
+  pairs <- expand.grid(i = 1:(n-1), j = 2:n)
+  pairs <- pairs[pairs$j > pairs$i,]
+  
+  # Split pairs into chunks
+  chunk_size <- ceiling(nrow(pairs) / num_cores)
+  chunks <- split(pairs, rep(1:num_cores, each = chunk_size, length.out = nrow(pairs)))
+  
+  # Set up parallel backend
+  cl <- makeCluster(num_cores)
+  registerDoParallel(cl)
+  
+  # Export necessary functions to the cluster
+  clusterExport(cl, c("chamfer_distance"), envir = environment())
+  
+  # Parallel computation
+  results <- parLapply(cl, chunks, compute_chunk, article_matrix_list = article_matrix_list)
+  
+  # Stop cluster
+  stopCluster(cl)
+  
+  # Combine results
+  all_results <- do.call(rbind, results)
+  
+  # Create distance matrix
+  distance_matrix <- matrix(NA, n, n)
+  for (k in 1:nrow(all_results)) {
+    i <- all_results[k, 1]
+    j <- all_results[k, 2]
+    dist <- all_results[k, 3]
+    distance_matrix[i, j] <- dist
+    distance_matrix[j, i] <- dist
+  }
+  
+  return(distance_matrix)
+}
+
+# Usage
+distance_matrix <- compute_distance_matrix(article_matrix_list)
+
+# Check for any NA values (indicating errors)
+na_count <- sum(is.na(distance_matrix))
+if (na_count > 0) {
+  warning(paste(na_count, "distance calculations resulted in errors"))
+}
+```
+
+
+```{r}
+#diagonals of distances are n/a, replace n/a with 0
+distance_matrix <- readRDS('/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/india_chamfer_distance_matrix.rds')
+distance_matrix[is.na(distance_matrix)] <- 0
+```
+
+
+
+```{r}
+# Apply pam clustering using the chamfer distance matrix
+pam_result <- pam(distance_matrix, 5, diss = TRUE, nstart = 20)
+best_df_3 <- add_cluster_column(dataframe, pam_result$clustering)
+best_ari_score_3 <- calculate_ari(pam_result$clustering, updated_dataframe)
+cat("ARI score:", best_ari_score_3)
+
+```
+
+
+```{r}
+create_wordclouds(best_df_3)
+```
+
+```{r}
+#Plotting efficiency
+library(ggplot2)
+
+# Data for the models
+models <- c('Model 1', 'Model 2', 'Model 3', 'Model 4')
+total_efficiency <- c(4.7e9, 1.6e11 + 3.1e8, 7.5e11 + 1.3e4*10, 1.5e8 + 1.1e8)
+clustering_efficiency <- c(4.7e9, 3.1e8, 1.3e4*10, 1.1e8)
+
+# Creating a data frame for total efficiency
+df_total <- data.frame(Model = models, Efficiency = total_efficiency)
+
+# Creating a data frame for clustering efficiency
+df_clustering <- data.frame(Model = models, Efficiency = clustering_efficiency)
+
+# Plotting total efficiency
+ggplot(df_total, aes(x = Model, y = Efficiency)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  #scale_y_log10() +
+  labs(title = "Total Efficiency of Models (Including Preprocessing)", y = "Approx. Total Computations") +
+  theme_minimal()
+
+# Plotting clustering efficiency
+ggplot(df_clustering, aes(x = Model, y = Efficiency)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  #scale_y_log10() +
+  labs(title = "Clustering Efficiency of Models", y = "Approx. Clustering Computations") +
+  theme_minimal()
+# Data for ARI scores
+models <- c('Model 1', 'Model 2', 'Model 3', 'Model 4')
+ari_scores <- c(0.9066, 0.2803, 0.0658, 0.8510)
+
+# Creating a data frame for ARI scores
+df_ari <- data.frame(Model = models, ARI_Score = ari_scores)
+
+# Plotting ARI scores
+ggplot(df_ari, aes(x = Model, y = ARI_Score)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  ylim(0, 1) +
+  labs(title = "Best ARI Scores over 20 Initializations", y = "ARI Score") +
+  theme_minimal()
+
+```
+
+```{r}
+#Custom k-means function to print progress, with custom distance metric 
+kcca_with_progress <- function(data, k, dist_function = "kmeans", nstart = 1) {
+  best_kcca <- NULL
+  best_tot_withinss <- Inf
+  best_silhouette <- -Inf
+  best_ch_index <- -Inf
+  
+  for (i in 1:nstart) {
+    set.seed(i)
+    kcca_result <- kcca(data, k = k, family = kccaFamily(which = dist_function), control = list(initcent = "kmeanspp", verbose = 10))
+    # Calculate within-cluster sum of squares directly
+    cluster_centers <- kcca_result@centers
+    cluster_assignments <- kcca_result@cluster
+    total_wcss <- 0
+    
+    for (j in 1:k) {
+      cluster_points <- data[cluster_assignments == j, , drop = FALSE]
+      if (nrow(cluster_points) > 0) {
+        distances <- apply(cluster_points, 1, function(point) {
+          sum((point - cluster_centers[j, ])^2)
+        })
+        total_wcss <- total_wcss + sum(distances)
+      }
+    }
+
+    # Print progress for each start
+    cat("Initialization:", i, "\n")
+    cat("Total within-cluster sum of squares:", total_wcss, "\n")
+    cat("Total distance:", kcca_result@totaldist, "\n")
+    # Check if this is the best k-means result so far
+    if (total_wcss < best_tot_withinss) {
+      best_kcca <- kcca_result
+      best_tot_withinss <- total_wcss
+    }
+  }
+  
+  return(kcca_result = best_kcca)
+}
+```
+
