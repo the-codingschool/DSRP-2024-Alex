@@ -45,10 +45,11 @@ nyt_vocab_set <- hash(keys = nyt_vocab_vector, values = 1:length(nyt_vocab_vecto
 ```
 
 ```{r}
-# Read NYT Matrix Data
+# Read The Indian Express Bag of Words Matrix Data
 data_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/bag_of_words_tf_idf"
 df_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/bag_of_words_df.csv"
 data <- readRDS(data_path)
+dataframe <- fread(df_path)
 ```
 
 
@@ -59,12 +60,10 @@ data <- readRDS(data_path)
 india_vocab_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/IndiaData/vocabulary.csv'
 india_vocab <- fread(india_vocab_path)
 india_vocab_vector <- tolower(india_vocab$word)
-#convert article from tf-idf vector to list of word2vec
-dataframe <- fread(df_path)
 ```
 
 ```{r}
-#Read original label data
+# Read original label data
 labels_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/IndiaData/category_vector.csv'
 labels_data <- fread(labels_path)
 colnames(labels_data) <- c("label")
@@ -74,7 +73,7 @@ labels_vector <- labels_data$label
 
 
 ```{r}
-# add labels to dataframe
+# Add labels to dataframe
 dataframe <- dataframe |>
 cbind(label = sapply(dataframe$article_id, function(id) {
   labels_vector[id]

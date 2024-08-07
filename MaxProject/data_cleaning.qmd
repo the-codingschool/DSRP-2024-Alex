@@ -24,8 +24,10 @@ colnames(data) <- c("article_id", "word_id", "word_id_occurrences")
 #read nyt vocab data
 nyt_vocab <- fread(nyt_vocab_file_path)
 colnames(nyt_vocab) <- c("word")
-nyt_vocab_vector <- setNames(1:nrow(nyt_vocab), nyt_vocab$word)
+nyt_vocab_vector <- nyt_vocab$word
 length(nyt_vocab_vector)
+
+nyt_vocab_set <- hash(keys = nyt_vocab_vector, values = 1:length(nyt_vocab_vector))
 
 #read english vocab data
 english_vocab <- fread(english_vocab_file_path)
@@ -38,8 +40,8 @@ Ignore nonsensical words such as "ffff", but keep words prefixed with zzz_ since
 ```{r}
 valid_word_ids <- logical(length(nyt_vocab_vector))
 for (i in 1:length(valid_word_ids)) {
-  word <- names(nyt_vocab_vector)[i]
-  if (!is.null(english_vocab_set[[ word ]] ) || startsWith(word, 'zzz')) {
+  word <- (nyt_vocab_vector)[i]
+  if (!is.null(english_vocab_set[[ word ]] ) || startsWith(word, 'zzz_')) {
     valid_word_ids[i] = TRUE
   }
 }
@@ -64,7 +66,13 @@ small_data
 
 Convert data table into vectors for each article
 Cleaning Conditions: ignore word_ids with nonsensical words (words in nyt vocab but not in english vocab). 
-Check zzz_{word} to see if word is in nyt_vocab_vector. If it is, ignore zzz_{word} and increase frequency of {word} by one. 
+Check zzz_{word} to see if word is in nyt_vocab_vector. If it is, ignore zzz_{word} and increase frequency of {word} by one.
+
+```{r}
+word <- "zzz_apple"
+substr(word, 5, nchar(word))
+nyt_vocab_set["aahed"]
+```
 
 ```{r}
 vector_list <- list()
@@ -74,9 +82,19 @@ for (x in unique(small_data$article_id)) {
   
   for (i in 1:nrow(article_data)) {
     word_index <- as.integer(article_data[i, 'word_id'])
+    word <- nyt_vocab_vector[word_index]
     word_occurences <- as.integer(article_data[i, 'word_id_occurrences'])
+    #check if word is valid, ignore otherwise
     if(valid_word_ids[word_index]) {
-      article_vector[word_index] <- word_occurences
+      #check if word starts with zzz_{word}, replace word_index with index of {word} if word exists in nyt vocab
+      if(startsWith(word, "zzz_")) {
+        suffix <- substr(word, 5, nchar(word))
+        
+        if(!is.null(nyt_vocab_set[[suffix]] )) {
+          word_index = nyt_vocab_set[[suffix]]
+        }
+      }
+      article_vector[word_index] = article_vector[word_index] + word_occurences
     }
   }
   
@@ -92,6 +110,9 @@ vector1 = vector_list[[1]]
 vector2 = vector_list[[2]]
 filter(small_data, article_id == 1)
 filter(small_data, article_id == 2)
+```
+```{r}
+crossprod(sparse_matrix[1,], sparse_matrix[2,])
 ```
 
 
@@ -111,7 +132,7 @@ for (i in 1:n) {
       dot_product_matrix[i, j] <- as.integer(vector_list[[i]] %*% vector_list[[j]])
     }
   }
-  cat("done processing i = ", i)
+    cat("done processing i = ", i)
 }
 
 ```

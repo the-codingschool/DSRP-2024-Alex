@@ -13,7 +13,10 @@ library(lsa)
 library(ClusterR)
 library(philentropy)
 library(textreuse)
+library(cluster)
+library(fpc)
 ```
+
 ```{r}
 # k-means clustering with custom distance calculation
 cosine_distance <- function(x, centers) {
@@ -108,15 +111,18 @@ stupid_distance <- function(x, centers) {
 }
 ```
 
+
 ```{r}
 #Custom k-means function to print progress, with custom distance metric 
 kcca_with_progress <- function(data, k, dist_function = "kmeans", nstart = 1) {
   best_kcca <- NULL
   best_tot_withinss <- Inf
-
+  best_silhouette <- -Inf
+  best_ch_index <- -Inf
+  
   for (i in 1:nstart) {
     set.seed(i)
-    kcca_result <- kcca(data, k = k, family = kccaFamily(which = dist_function), control = list(initcent = "kmeanspp"))
+    kcca_result <- kcca(data, k = k, family = kccaFamily(which = dist_function), control = list(initcent = "kmeanspp", verbose = 3))
     
     # Calculate within-cluster sum of squares directly
     cluster_centers <- kcca_result@centers
@@ -132,7 +138,7 @@ kcca_with_progress <- function(data, k, dist_function = "kmeans", nstart = 1) {
         total_wcss <- total_wcss + sum(distances)
       }
     }
-    
+
     # Print progress for each start
     cat("Initialization:", i, "\n")
     cat("Total within-cluster sum of squares:", total_wcss, "\n")
@@ -140,36 +146,51 @@ kcca_with_progress <- function(data, k, dist_function = "kmeans", nstart = 1) {
     # Check if this is the best k-means result so far
     if (total_wcss < best_tot_withinss) {
       best_kcca <- kcca_result
-      best_tot_withinss <- total_wcss
+      #best_tot_withinss <- total_wcss
+      #best_silhouette <- mean(silhouette(cluster_assignments, dist(data))[, "sil_width"])
+      best_ch_index <- calinhara(data, cluster_assignments)
     }
   }
   
-  return(best_kcca)
+  return(list(kcca_result = best_kcca, 
+              wcss = best_tot_withinss, 
+              silhouette = best_silhouette, 
+              ch_index = best_ch_index))
 }
 
 ```
+
 ```{r}
-# Custom k-means function to print progress
-kmeans_with_progress <- function(data, centers, nstart = 1, max_iter = 100) {
-  best_kmeans <- NULL
-  best_tot_withinss <- Inf #measure of loss, within cluster sum of squares
-  
-  for (i in 1:nstart) {
-    set.seed(i)
-    kmeans_result <- kmeans(data, centers = centers, iter.max = max_iter)
-    
-    # Print progress for each start
-    cat("Initialization:", i, "Total within-cluster sum of squares:", kmeans_result$tot.withinss, "Iterations:", kmeans_result$iter, "\n")
-    
-    # Check if this is the best k-means result so far
-    if (kmeans_result$tot.withinss < best_tot_withinss) {
-      best_kmeans <- kmeans_result
-      best_tot_withinss <- kmeans_result$tot.withinss
-    }
-  }
-  
-  return(best_kmeans)
-}
+kcca(filtered_dense_matrix, k = 10, family = kccaFamily("angle"), control = list(initcent = "kmeanspp", verbose = 1))
+```
+```{r}
+dim(reduced_matrix)
+kcca(reduced_matrix, k = 10, family = kccaFamily("angle"), control = list(initcent = "kmeanspp", verbose = 1))
+```
+
+```{r}
+clustering_results <- kcca_with_progress(reduced_matrix, k = 10, "angle", nstart = 1)
+kcca_result <- clustering_results$kcca_result
+best_wcss <- clustering_results$wcss
+best_silhouette <- clustering_results$silhouette
+best_ch_index <- clustering_results$ch_index
+
+kcca_result
+cat("Best WCSS:", best_wcss, "\n")
+cat("Best Silhouette Score:", best_silhouette, "\n")
+cat("Best Calinski-Harabasz Index:", best_ch_index, "\n")
+```
+```{r}
+clustering_results <- kcca_with_progress(reduced_matrix, k = 2, "angle", nstart = 2)
+kcca_result <- clustering_results$kcca_result
+best_wcss <- clustering_results$wcss
+best_silhouette <- clustering_results$silhouette
+best_ch_index <- clustering_results$ch_index
+
+kcca_result
+cat("Best WCSS:", best_wcss, "\n")
+cat("Best Silhouette Score:", best_silhouette, "\n")
+cat("Best Calinski-Harabasz Index:", best_ch_index, "\n")
 ```
 
 ```{r}
@@ -181,29 +202,40 @@ nyt_vocab_vector <- nyt_vocab$word
 ```{r}
 data_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_matrix.rds"
 df_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_df.csv"
-mapping_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_mapping.csv"
 data <- readRDS(data_path)
-mapping <- read_csv(mapping_path)
-```
-
-```{r}
-new_to_old_mapping <- hash(keys = mapping$new_id, values = mapping$original_id)
 ```
 
 
 ```{r}
-dense_matrix <- data
+dim(reduced_matrix)
+```
+
+
+```{r}
+dense_matrix <- as.matrix(data)
 #remove zero variance columns
 zero_var_columns <- apply(dense_matrix, 2, var) == 0 #param: apply(matrix, dimension, function)
 filtered_dense_matrix <- dense_matrix[, !zero_var_columns]
 # dont need scaling since tf-idf alrleady does that 
-# Reduce dimensionality using PCA
+# Reduce dimensionality using PCA (takes ~five minutes to run with input size 1992)
 pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
 reduced_matrix <- pca_result$x
 ```
 
 ```{r}
-kcca_result <- kcca_with_progress(reduced_matrix, k = 100, "angle", nstart = 20)
+small_matrix <- filtered_dense_matrix[1:100, ]
+small_matrix <- small_matrix > 0
+small_binary_matrix <- Matrix(0, nrow = nrow(small_matrix), ncol = ncol(small_matrix))
+
+for(i in 1:100) {
+  small_binary_matrix[i,] <- as.integer(small_matrix[i,])
+}
+small_binary_matrix[1,]
+```
+
+
+```{r}
+kcca_result <- kcca_with_progress(reduced_matrix, k = 10, "angle", nstart = 1)
 kcca_result
 ```
 
@@ -211,12 +243,8 @@ kcca_result
 #create dataframe with cluster, article_id, and original article_id
 cluster_data <- data.frame(
   article_id = 1:length(kcca_result@cluster),
-  cluster = kcca_result@cluster,
-  original_id = sapply(1:length(kcca_result@cluster), function(x) {
-    new_to_old_mapping[[as.character(x)]]
-  })
+  cluster = kcca_result@cluster
 )
-table(cluster_data[,"cluster"])
 ```
 
 
@@ -251,37 +279,70 @@ for (i in 1:nrow(dense_matrix)) {
 
 ```{r}
 #create aggregate cluster dataframe
-cluster_num = 15
-for (cluster_num in 1:100){
+aggregated_tf_idf_list <- list()
+
+for (cluster_num in (1:10)){
   articles_in_cluster <- filter(cluster_data, cluster == cluster_num)$article_id
   
   # Initialize merged_cluster_df with the first article in the cluster
   merged_cluster_df <- list_of_data_frames[[articles_in_cluster[1]]]
   
   # Loop through the remaining articles in the cluster and perform full outer join
+  count <- 0
   for(id in articles_in_cluster[-1]) {
+    count <- count + 1
     df_id <- list_of_data_frames[[id]]
     merged_cluster_df <- full_join(merged_cluster_df, df_id, by = "word", suffix = c("", paste0("_df", as.character(id))))
+    if(count%% 50 == 0){print(count)}
+    #takes too long to print if it's around 600
+    if(count > 500) {
+      break
+    }
   }
   
   names(merged_cluster_df)[names(merged_cluster_df) == "article_id"] <- paste0("article_id_df", as.character(articles_in_cluster[1]))
   names(merged_cluster_df)[names(merged_cluster_df) == "word_index"] <- paste0("word_index_df", as.character(articles_in_cluster[1]))
   names(merged_cluster_df)[names(merged_cluster_df) == "tf_idf"] <- paste0("tf_idf_df", as.character(articles_in_cluster[1]))
   
-  #calculate aggregate tfidf for each word in the cluster. (Finds most important words)
+  #calculate aggregate tfidf for each word in the cluster. (Finds most important words) (takes a while)
   aggregated_tf_idf <- merged_cluster_df |>
     rowwise() |>
     mutate(total_tf_idf = sum(c_across(starts_with("tf_idf")), na.rm = TRUE)) |>
     select(word, total_tf_idf) |>
     arrange(desc(total_tf_idf))
-  print(aggregated_tf_idf)
+  aggregated_tf_idf_list[[cluster_num]] <- aggregated_tf_idf
 }
+```
+```{r}
+aggregated_tf_idf_list
 ```
 
 ```{r}
-df1 <- data.frame(col1 = c(1, 2, 3), col2 = c(10, 20, 30), ignore = c(100, 200, 300))
-mutate(rowwise(df1), total_sum = sum(c_across(starts_with("col")), na.rm = TRUE))
+# Word Cloud visualization
+library(wordcloud)
+library(RColorBrewer)
+op <- par(mar = c(0, 0, 0, 0))
+
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+
+for(i in (1:10)) {
+  aggregated_tf_idf <- aggregated_tf_idf_list[[i]]
+  wordcloud_df <- data.frame(word = aggregated_tf_idf$word, freq = aggregated_tf_idf$total_tf_idf)
+  # Normalize the TF-IDF values
+  wordcloud_df$freq <- normalize(wordcloud_df$freq)
+  # Remove 'zzz_' prefix from the word column
+  wordcloud_df$word <- gsub("^zzz_", "", wordcloud_df$word)
+  
+  wordcloud(words = wordcloud_df$word, freq = wordcloud_df$freq, scale=c(1,0.1), min.freq = summary(wordcloud_df$freq)["1st Qu."], max.words=200, random.order=FALSE, rot.per=0.0, colors=brewer.pal(8, "Dark2"))
+}
+par(op)
 ```
+```{r}
+summary(wordcloud_df$freq)["1st Qu."]
+```
+
 
 ```{r}
 # Reduce dimensionality for visualization using PCA
