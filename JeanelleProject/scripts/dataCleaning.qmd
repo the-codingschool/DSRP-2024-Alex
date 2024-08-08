@@ -52,7 +52,6 @@ for (x in unique(small_data$article_id)) {
   # Add data from data table into article vector
   vector_list[[x]] <- article_vector
   
-  # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
  if(x %% 100 == 0) {
     cat("processed ", x)
   }
