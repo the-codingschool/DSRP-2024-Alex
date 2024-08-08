@@ -1,0 +1,67 @@
+---
+title: "Investigating the Efficiency of NLP Algorithms"
+author: "Derin Özkan"
+format: html
+editor: visual
+---
+
+## Introduction
+
+Modeling the semantic similarity between text documents is a significant theoretical challenge for cognitive science but also has many widely beneficial applications in areas such as information handling and decision support systems. Such an ability could be used to screen incoming documents for relevance, organize a body of documents on a specific topic, or provide diverse recommendations of documents in response to a query. At a more advanced level’s ability to assess whether different documents should be discarded in favour of one another; at very basic levels’ ability to gauge whether different documents should be examined in the first place in terms of relevance (Lee et al., 2005).
+
+The advent of the Internet has led to generation of massive and high dimensional data. In many industrial applications, the size of the datasets has long exceeded the memory capacity of a single machine. According to one estimate, as of 2012 there were about 10\^15 documents on the web accumulating at the rate of several billion new documents per week where it has proven difficult to maintain a master copy (Shrivastava and Li, 2014). Leading search companies routinely use sparse binary representations in their large data systems. This stark and unprecedented increase of scale poses enormous challenges to the existing technology and demands the rapid development of truly innovative algorithms. In order to efficiently allow similarity search on very large scale datasets, locality sensitive hashing (LSH) based approaches have gained increasing popularity over the past few years with the promise of scalable and practical solutions to the nearest neighbor search problem. The vast majority of prior work on LSH has focused on similarity measures for general real-valued vectors. MinHash is an LSH for binary vectors, while SimHash is an LSH for general real-valued data. A critical question that has not been addressed in assessing these algorithms is their efficiency in handling datasets with textual documents. I will aim to compare the efficiency of MinHash, SimHash, dot product, and TF-IDF through analyzing their time and space complexities.
+
+## **Background and Motivation**
+
+The study analyzes four text similarity algorithms using a dataset from the UCI Machine Learning Repository's Bag of Words collection(I. Abdalla and A. Amer, 2021). Each article in this dataset is represented as a text document containing a collection of words. Each article can be represented as a Bag of Words (BoW) vector. If a word appears in an article, its value is the occurrence count of that word in the article; otherwise, its value is zero. The similarity between the BoW vectors is calculated using four text similarity algorithms: dot product, simhash, minhash, and TF-IDF. The resulting text similarity matrices are analyzed with respect to their efficiency in terms of time and space complexity. The study aimed to evaluate the computational efficiency and accuracy of these algorithms in handling high-dimensional text data.
+
+A text document (an article) is a collection of words. A bag of words (BoW) representation of a text document is a vector representation of that text document, and each dimension of the BoW vector refers to a distinct word in that text document. The value of each dimension in a BoW representation could be based on some certain text measurement of that word in the article. The text measurements that could be used are the occurrence count of that word in the article, the ternary value of that word in the article, etc. A bag of words (BoW) representation of n text documents with k distinct words is an n by k matrix, each row of the matrix refers to a text document, and each column refers to a distinct word. If a word appears in a document, the value is the text measurement of that word in the document; otherwise, the value is zero (Lee et al., 2005).
+
+## **Importance of Efficiency Analysis**
+
+In the age of big data, the necessity of analyzing the efficacy of algorithms that can be deployed to handle large datasets becomes vital. With the adoption of cloud computing platforms, many widely used algorithms are analyzed for their performance in that type of environment. The performance of the algorithm is analyzed mainly in four segments as follows:
+
+1\. Time Complexity, which is the amount of time an algorithm takes to produce an output, irrespective of the underlying hardware and other time constraints. It is typically expressed using Big O notation.\
+2. Space Complexity, which is the amount of memory an algorithm uses relative to the size of the input. Like time complexity, it is also expressed using Big O notation and focuses on the memory required to run the algorithm.\
+4. Based on the performance analysis, they are classified into groups based on their efficiency.
+
+Such kind of performance analysis is as much important as the algorithm itself. In this study, the emphasis will be on solely the time and space complexity of the four algorithms.
+
+## **SimHash**
+
+SimHash is a locality-sensitive hashing (LSH) technique used to approximate the Hamming distance between high-dimensional vectors. It's particularly useful for detecting near-duplicate documents. In contrast to other LSH methods, SimHash creates a fingerprint for a document that is designed to be similar for documents that are similar in content. The fingerprints (or hashes) are binary vectors, and the similarity between documents can be measured by the Hamming distance between these vectors, the number of positions where the corresponding bits differ. It is often used for high-dimensional sparse vectors, such as those representing text where each dimension corresponds to a word in a large vocabulary. The sparse nature of these vectors means that most entries are zero, which represents the absence of a particular word. The process of computing a SimHash includes creating a weighted vector by summing up randomly generated vectors associated with each feature, which is a word. If a word is present, its associated vector is added and the term's importance is accounted for by the weights, and if the word is absent, the vector is not added. The final Simhash vector is obtained by setting each bit to 1 if the corresponding dimension in the summed vector is positive and to 0 otherwise.
+
+## **MinHash**
+
+The performance of Minhash and Locality Sensitive Hashing (LSH) has been illuminated when detecting near-duplicate files. LSH itself also finds applications in nearest neighbor search and recommendation systems. However, rather than focusing on these applications, this paper aims to evaluate the raw performance of Minhash in approximating the Jaccard similarity of large bag of words-like datasets, where each document contains a set of words. The primary difference between this work and existing experiments on Minhash is in the characteristics of the dataset we use. While previous work on Minhash has concentrated mainly on sparse data such as tf-idf bag of words, here, we focus on dense discrete data and explore how to exploit these characteristics for better performance. The dataset from the UCI repository (the Bag of Words dataset) typically represents text data in a sparse format where each document is a sparse vector of word counts.
+
+The Jaccard similarity of two set-based transactions is defined as the size of their intersection divided by the size of their union. Formally, given two sets A and B, J(A,B) is defined as \|A ∩ B\|/(\|A ∪ B\|). The Jaccard similarity thresholding problem is to find all pairs of set-based data with Jaccard similarity above some pre-specified threshold θ. Detecting duplication finds its origins in database and data deduplication, or more generally sensor database management. The problem also has implications in spam detection, computer forensics, ML classification, and recommendation systems.
+
+## **TF-IDF**
+
+TF-IDF (term frequency-inverse document frequency) is a feature extraction method that is used for text classification and clustering. It computes each input document's representation. TF-IDF is a numerical statistic that reflects how important a word is to a document in a collection of documents. It contains two components: a local component that is the term frequency (TF), and a global component that is the inverse document frequency (IDF). Given a vocabulary of words, each document can be represented as a feature vector that contains the TF-IDF of each word in the vocabulary. The TF-IDF is computed for each word in the vocabulary of input documents as follows: the term frequency is the number of times a word appears in a document divided by the total number of words in the document. The inverse document frequency is the inverse of the number of documents that contain the word, calculated as the ratio between the total number of documents and the number of documents where the word appears.
+
+Given an input set of text documents that belong to a specific category and a vocabulary, the set of documents of the category is processed for TF-IDF feature extraction. The vocabulary is embedded with features with their corresponding TF-IDF values obtained from the training data. Using the obtained features, all the documents are represented as input feature vectors. TF-IDF is a well-known feature extraction method employed in text-related machine learning tasks. The features obtained from TF-IDF are not the features that are most related to topics, but they are the ones that have known minimal compositions. TF-IDF can be used with many classification models and function as a good baseline solution for text-related machine learning applications. While TF-IDF is efficient for feature extraction, it is not necessarily slow unless the dataset is very large or the vocabulary is extremely extensive. The speed depends on the implementation and the size of the dataset. Also, TF-IDF is generally faster than some other feature extraction techniques, such as word embeddings, because it doesn't require training on a large corpus.
+
+## **Previous Studies on Efficiency of Algorithms**
+
+Many studies have compared a variety of text similarity measures, focusing on the classification or clustering task. Some studies have used a data-driven approach to compare and combine word embeddings for text similarity measures. This study aims to explore the tradeoff between time and space complexity when used for document classification.
+
+Our primary goal is to evaluate the efficiency of algorithms when the document size is small, medium, and large. Large corpora are commonly used in mass analysis to develop and teach algorithms. Functionality and large versus small datasets do not affect the architecture, functionality, and usability of the algorithm. However, big data during development will certainly affect the algorithm's efficiency. More specifically, the efficiency of the similarity measures by wasting a lot of time and computer resources may not reach an acceptable answer. At the pre-processing stage of the data between the similarity measure and the document, there are logical and deterministic operations. Even though a standard algorithm is used, by no means each operation can be performed in the same amount of time. We will use 100 documents, 500 documents, and 1000 documents as the small, medium, and large datasets respectively in this study and evaluate their efficiency.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
