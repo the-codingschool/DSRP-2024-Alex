@@ -146,4 +146,6 @@ I would like to acknowledge Sarah Parker for teaching me the basics of Data Scie
 
 I would like to acknowledge Pavithra, the TA that I worked with, for teaching and helping me solve any issues that I encountered while coding.
 
+I would like to acknowledge Alex's research group for sharing ideas and discussing issues throughout the process.
+
 I would like to acknowledge the DSRP team, the Coding School, and Columbia University for holding this program and giving me this opportunity, providing me with all the resources I needed to complete this project.
