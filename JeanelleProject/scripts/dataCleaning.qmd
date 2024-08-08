@@ -1,0 +1,131 @@
+```{r}
+# importing libraries 
+if (!require("data.table")) install.packages("data.table")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("hash")) install.packages("hash")
+if (!require("tm")) install.packages("tm")
+if (!require("tm")) install.packages("tm")
+
+library(data.table) 
+library(dplyr)
+library(hash)
+library(tm)
+library(Matrix)
+
+```
+```{r}
+# reading in NYT data-set w/ articles and vocab file 
+# importing dictionary for filtering 
+dataFile <- fread("data/docword.nytimes.txt.gz")
+vocabFile <- fread("data/vocab.nytimes.txt")
+filterFile <- fread("data/words_alpha.txt")
+
+colnames(data_file) <- c("article_id", "word_id", "word_id_occurr")
+colnames(vocab_file) <- c("vocab")
+colnames(filter_file) <- c("word")
+```
+
+```{r}
+# exploratory data analysis 
+
+
+
+```
+```{r}
+# Create a smaller dataset to test out Jaccard Similarity. Start with 1,000 articles and slowly increment to test algorithm efficiency 
+small_data <- filter(data, article_id <= 1000)
+
+colnames(vocab) <- c("word")
+vocab_vector <- setNames(1:nrow(vocab), vocab$word)
+
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
+  article_data <- filter(small_data, article_id == x)
+  
+  for (i in 1:nrow(article_data)) {
+    word_index <- as.integer(article_data[i, 'word_id'])
+    word_count <- as.integer(article_data[i, 'word_occurrences'])
+    article_vector[word_index] <- word_count
+  }
+  
+  # Add data from data table into article vector
+  vector_list[[x]] <- article_vector
+  
+  # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
+ if(x %% 100 == 0) {
+    cat("processed ", x)
+  }
+}
+
+# Print the vectors and dataframes for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+filter(small_data, article_id == 1)
+filter(small_data, article_id == 2)
+print(vector1)
+print(vector2)
+
+```
+
+```{r}
+# Filter repetitive words like "the" or "and" using tf-idf 
+# Calculate document frequencies
+doc_freq <- small_data %>%
+  group_by(word_id) %>%
+  summarize(doc_freq = n_distinct(article_id))
+
+# Calculate IDF
+total_docs <- n_distinct(small_data$article_id)
+doc_freq$idf <- log(total_docs / doc_freq$doc_freq)
+
+# Calculate TF-IDF
+small_data <- small_data %>%
+  left_join(doc_freq, by = "word_id") %>%
+  group_by(article_id) %>%
+  mutate(tf = word_occurrences / sum(word_occurrences),
+         tfidf = tf * idf)
+
+common_words <- small_data %>%
+  group_by(word_id) %>%
+  summarize(doc_count = n_distinct(article_id)) %>%
+  filter(doc_count > total_docs * 0.5) %>%
+  pull(word_id)
+
+small_data_filtered <- small_data %>%
+  filter(!word_id %in% common_words)
+
+
+vector_list <- small_data_filtered %>%
+  group_by(article_id) %>%
+  summarize(vector = list(setNames(tfidf, word_id))) %>%
+  pull(vector, name = article_id)
+
+# Print the vectors for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+print(head(vector1, 20))
+print(head(vector2, 20))
+
+# Print the most important words for each article 
+print_top_words <- function(doc_id, n = 10) {
+  vec <- vector_list[[as.character(doc_id)]]
+  top_indices <- order(vec, decreasing = TRUE)[1:min(n, length(vec))]
+  top_words <- vocabFile$vocab[as.integer(names(vec[top_indices]))]
+  top_scores <- vec[top_indices]
+  cat("Top words for document", doc_id, ":\n")
+  for (i in 1:length(top_words)) {
+    cat(sprintf("%s (%.4f)\n", top_words[i], top_scores[i]))
+  }
+}
+
+print_top_words(1)
+print_top_words(2)
+```
+```{r}
+```
+
+
+
+
+
