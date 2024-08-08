@@ -12,9 +12,7 @@ Amiya Harish
 
 ## Abstract
 
-My research question asks if the loss in accuracy of a similarity search algorithm using SimHash worth the efficiency. I determine this by comparing the performance metrics of an algorithm using SimHash and the basic cosine similarity algorithm. I created a vector for each article in the New York Times articles dataset with the number of times each word in the full word list appears in each article. I then used this vector list to find similarity scores using different algorithms. The dataset is very large, with 300,000 articles, however, in order for my computer to be able to handle the program I took a subset of the first 1000 articles to run the algorithms on.
-
-results + conclusion
+My research question asks if the loss in accuracy of a similarity search algorithm using SimHash worth the efficiency. I determine this by comparing the performance metrics of an algorithm using SimHash and the basic cosine similarity algorithm. I created a vector for each article in the New York Times articles dataset with the number of times each word in the full word list appears in each article. I then used this vector list to find similarity scores using different algorithms. The dataset is very large, with 300,000 articles, however, in order for my computer to be able to handle the program I took a subset of the first 1000 articles to run the algorithms on. My main finding from this project is that the loss in accuracy with using a SimHash algorithm to calculate similarity between articles is insignificant when compared to the large boost in efficiency. This project proves that in the future, SimHash can transform how we handle large datasets by balancing speed with acceptable accuracy. As a result, further advancements in SimHash could drive even greater efficiency and applicability across new domains, drastically improving what we can do with technology.
 
 ## Background
 
@@ -24,6 +22,7 @@ The dataset I use consists of articles from the New York Times and all the words
 
 ```{r setup}
 #| echo: FALSE
+#| message: FALSE
 
 library(caret)
 library(scales)
@@ -117,9 +116,21 @@ ggplot(plot_data, aes(x = Algorithm, y = Accuracy, color = Algorithm)) +
   theme(legend.position = "none")
 ```
 
-Above is a bar graph that shows the accuracy of each algorithm in calculating similarity scores by percentage. The accuracy of SimHash is extremely low in comparison with the basic cosine similarity algorithm which has 100% accuracy.
+Above is a lollipop graph that shows the accuracy of each algorithm in calculating similarity scores by percentage. The graph is scaled to zoom in on the top 10 percent accuracy. It is clear that the accuracy of SimHash is only slightly lower in comparison with the basic cosine similarity algorithm which has 100 percent accuracy.
 
 ## Discussion
+
+This proejct demonstrates the potential of the SimHash algorithm for optimizing similarity searches in large datasets. The comparison between SimHash and the basic cosine similarity algorithm reveals a striking trade-off between efficiency and accuracy. While the basic cosine similarity algorithm achieves perfect accuracy, the SimHash algorithm, with a slightly lower accuracy of 99.89 percent, offers a substantial boost in both time and memory efficiency. This balance suggests that in many practical applications, the minor loss in accuracy is justifiable given the significant gains in performance.
+
+SimHash proves to be a highly efficient alternative for similarity searches, particularly in scenarios requiring rapid processing or limited computational resources. The ability to maintain near-perfect accuracy while significantly reducing time and memory usage makes SimHash particularly relevant in data science, where large-scale data processing is common.
+
+This research highlights the growing importance of balancing accuracy with efficiency in data science. As datasets continue to expand, methods like SimHash that optimize resource usage without compromising too much on accuracy will become increasingly important.
+
+A key limitation of this project is the use of a small subset of the New York Times dataset, which may not fully represent SimHash's performance across more diverse and larger datasets. Additionally, while the accuracy loss is minimal, it may not be acceptable in applications where precision is critical, such as medical or legal domains.
+
+Future research should explore SimHash’s performance with larger and more varied datasets to validate these findings. Could combining SimHash with other algorithms further enhance efficiency without sacrificing accuracy?
+
+This project proves the necessity for the continued use and development of SimHash in data science, particularly where efficiency is prioritized and slight accuracy trade-offs are acceptable.
 
 ## **Code and Data Availability**
 
@@ -131,8 +142,8 @@ The dataset that I worked with came from the UC Irvine Machine Learning Reposito
 
 I would like to acknowledge Professor Alex Andoni for introducing the dataset, providing ideas, feedback, and helping me throughout this project.
 
-I would like to acknowledge Sarah Parker for teaching me the basics of Data Science, coding in R, and writing a research paper.
+I would like to acknowledge Sarah Parker for teaching me the basics of Data Science, coding in R, and how to write a research paper.
 
 I would like to acknowledge Pavithra, the TA that I worked with, for teaching and helping me solve any issues that I encountered while coding.
 
-I would like to acknowledge the DSRP team, the Coding School, and Columbia University for holding this program and providing me with all the resources I needed to complete this project.
+I would like to acknowledge the DSRP team, the Coding School, and Columbia University for holding this program and giving me this opportunity, providing me with all the resources I needed to complete this project.
