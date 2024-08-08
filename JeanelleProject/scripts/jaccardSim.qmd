@@ -1,0 +1,125 @@
+```{r}
+# Install and load required libraries
+if (!require(parallel)) install.packages("parallel")
+if (!require(doParallel)) install.packages("doParallel")
+if (!require(foreach)) install.packages("foreach")
+if (!require(ggplot2)) install.packages("ggplot2")
+library(parallel)
+library(doParallel)
+library(foreach)
+library(ggplot2)
+
+
+# Calculate Jaccard Similarity 
+# Function to calculate Jaccard similarity for count vectors
+jaccard_similarity <- function(vec1, vec2) {
+  
+  
+  binary_vec1 <- as.numeric(vec1 > 0)
+  binary_vec2 <- as.numeric(vec2 > 0)
+  
+  intersection <- sum(binary_vec1 & binary_vec2)
+  union <- sum(binary_vec1 | binary_vec2)
+  
+  
+  if (union == 0) {
+    return(0)  
+  } else {
+    return(intersection / union)
+  }
+}
+
+# Calculate Jaccard similarity for all pairs of articles
+n_articles <- length(vector_list)
+similarity_matrix <- matrix(0, nrow = n_articles, ncol = n_articles)
+
+for (i in 1:(n_articles - 1)) {
+  for (j in (i + 1):n_articles) {
+    sim <- jaccard_similarity(vector_list[[i]], vector_list[[j]])
+    similarity_matrix[i, j] <- sim
+    similarity_matrix[j, i] <- sim  
+  }
+  if (i %% 10 == 0) {
+    cat("Processed article", i, "of", n_articles, "\n")
+  }
+}
+
+
+diag(similarity_matrix) <- 1
+
+# Print first couple of rows for testing 
+print(similarity_matrix[1:5, 1:5])
+
+# Find the most similar pair of articles
+max_sim <- max(similarity_matrix[lower.tri(similarity_matrix)])
+which(similarity_matrix == max_sim, arr.ind = TRUE)
+
+# Calculate average similarity
+avg_sim <- mean(similarity_matrix[lower.tri(similarity_matrix)])
+cat("Average similarity:", avg_sim, "\n")
+
+
+
+
+benchmark_jaccard <- function(max_articles, num_samples = 10, sample_size = 100) {
+  results <- data.frame(num_articles = integer(), time = numeric())
+  
+  # Set up parallel back-end to increase plotting speed so computer doesn't crash 
+  cores <- detectCores() - 1  
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
+  
+  for (n in seq(sample_size, max_articles, length.out = num_samples)) {
+    n <- floor(n)  
+    
+    # Randomly sample articles
+    sample_indices <- sample(length(vector_list), n)
+    subset_list <- vector_list[sample_indices]
+    
+    # Benchmark the Jaccard similarity calculation
+    start_time <- Sys.time()
+    
+    similarity_matrix <- foreach(i = 1:(n-1), .combine = 'cbind') %dopar% {
+      result <- numeric(n)
+      for (j in (i+1):n) {
+        result[j] <- jaccard_similarity(subset_list[[i]], subset_list[[j]])
+      }
+      result
+    }
+    
+    end_time <- Sys.time()
+    
+
+    results <- rbind(results, data.frame(num_articles = n, time = as.numeric(difftime(end_time, start_time, units = "secs"))))
+  }
+  stopCluster(cl)
+  
+  return(results)
+}
+
+# Run the benchmark
+max_articles <- length(vector_list)
+benchmark_results <- benchmark_jaccard(max_articles)
+
+
+
+# Creating plot for algorithm speed 
+ggplot(benchmark_results, aes(x = num_articles, y = time)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "red") + theme_minimal() +
+  labs(title = "Jaccard Similarity Algorithm Performance (Sampled)",
+       x = "Number of Articles",
+       y = "Execution Time (seconds)") +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
+
+
+ggsave("jaccard_performance_graph_optimized.png", width = 10, height = 6)
+print(benchmark_results)
+
+# Calculate rate of increase -- doesn't really work 
+model <- lm(time ~ poly(num_articles, 2), data = benchmark_results)
+cat("Quadratic coefficient:", coef(model)[3], "\n")
+cat("This indicates the rate at which processing time increases with the number of articles.\n")
+```
+
