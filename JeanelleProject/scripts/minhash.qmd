@@ -1,0 +1,139 @@
+Comparison of Minhash to Jaccard similarity 
+```{r}
+# Install and load required libraries
+if (!require(digest)) install.packages("digest")
+if (!require(parallel)) install.packages("parallel")
+if (!require(doParallel)) install.packages("doParallel")
+if (!require(foreach)) install.packages("foreach")
+if (!require(ggplot2)) install.packages("ggplot2")
+library(digest)
+library(parallel)
+library(doParallel)
+library(foreach)
+library(ggplot2)
+
+# MinHash functions
+hash_function <- function(x, a, b, p) {
+  return((a * x + b) %% p)
+}
+
+minhash_signature <- function(vec, num_hashes, max_shingle) {
+  p <- 2147483647 
+  signature <- rep(Inf, num_hashes)
+  
+  for (i in 1:num_hashes) {
+    a <- sample(1:p, 1)
+    b <- sample(0:(p-1), 1)
+    
+    for (shingle in which(vec > 0)) {
+      hash_value <- hash_function(shingle, a, b, p)
+      signature[i] <- min(signature[i], hash_value)
+    }
+  }
+  
+  return(signature)
+}
+
+minhash_similarity <- function(sig1, sig2) {
+  return(sum(sig1 == sig2) / length(sig1))
+}
+
+# Calculate MinHash signatures for all articles
+calculate_minhash_signatures <- function(vector_list, num_hashes = 100) {
+  max_shingle <- max(sapply(vector_list, length))
+  
+  cores <- detectCores() - 1
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
+  
+  signatures <- foreach(vec = vector_list, .combine = rbind) %dopar% {
+    minhash_signature(vec, num_hashes, max_shingle)
+  }
+  
+  stopCluster(cl)
+  
+  return(signatures)
+}
+
+# Calculate MinHash similarity for all pairs of articles
+calculate_minhash_similarity_matrix <- function(signatures) {
+  n_articles <- nrow(signatures)
+  similarity_matrix <- matrix(0, nrow = n_articles, ncol = n_articles)
+  
+  for (i in 1:(n_articles - 1)) {
+    for (j in (i + 1):n_articles) {
+      sim <- minhash_similarity(signatures[i,], signatures[j,])
+      similarity_matrix[i, j] <- sim
+      similarity_matrix[j, i] <- sim  
+    }
+    if (i %% 10 == 0) {
+      cat("Processed article", i, "of", n_articles, "\n")
+    }
+  }
+  
+  diag(similarity_matrix) <- 1
+  return(similarity_matrix)
+}
+
+# Benchmark function for MinHash
+benchmark_minhash <- function(max_articles, num_samples = 10, sample_size = 100, num_hashes = 100) {
+  results <- data.frame(num_articles = integer(), time = numeric())
+  
+  for (n in seq(sample_size, max_articles, length.out = num_samples)) {
+    n <- floor(n)  
+    
+    # Randomly sample articles
+    sample_indices <- sample(length(vector_list), n)
+    subset_list <- vector_list[sample_indices]
+    
+    # Benchmark the MinHash calculation
+    start_time <- Sys.time()
+    
+    signatures <- calculate_minhash_signatures(subset_list, num_hashes)
+    similarity_matrix <- calculate_minhash_similarity_matrix(signatures)
+    
+    end_time <- Sys.time()
+    
+    results <- rbind(results, data.frame(num_articles = n, time = as.numeric(difftime(end_time, start_time, units = "secs"))))
+  }
+  
+  return(results)
+}
+
+# Run the benchmark
+max_articles <- length(vector_list)
+benchmark_results <- benchmark_minhash(max_articles)
+
+# Creating plot for algorithm speed 
+ggplot(benchmark_results, aes(x = num_articles, y = time)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "red") +  # Quadratic fit
+  theme_minimal() +
+  labs(title = "MinHash Algorithm Performance",
+       x = "Number of Articles",
+       y = "Execution Time (seconds)") +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
+
+
+ggsave("minhash_performance_graph.png", width = 10, height = 6)
+
+print(benchmark_results)
+model <- lm(time ~ poly(num_articles, 2), data = benchmark_results)
+cat("Quadratic coefficient:", coef(model)[3], "\n")
+cat("This indicates the rate at which processing time increases with the number of articles.\n")
+
+num_hashes <- 100  
+
+# Calculate MinHash signatures and similarity matrix 
+signatures <- calculate_minhash_signatures(vector_list, num_hashes)
+similarity_matrix <- calculate_minhash_similarity_matrix(signatures)
+print(similarity_matrix[1:5, 1:5])
+
+max_sim <- max(similarity_matrix[lower.tri(similarity_matrix)])
+which(similarity_matrix == max_sim, arr.ind = TRUE)
+
+avg_sim <- mean(similarity_matrix[lower.tri(similarity_matrix)])
+cat("Average similarity:", avg_sim, "\n")
+```
+
