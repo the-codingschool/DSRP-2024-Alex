@@ -1,1 +1,1 @@
-This is a data science research project on large datasets and optomization alogrithms 
+Researched optimizing similarity searches of mass datasets with Locality Sensitive Hashing and Approximate Nearest Neighbor Search Algorithms. Compared Jaccard Similarity Search to Minhash for processing speed and algorithm accuracy. 
