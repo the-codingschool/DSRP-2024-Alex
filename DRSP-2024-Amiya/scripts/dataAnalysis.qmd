@@ -1,0 +1,346 @@
+Loading in libraries
+
+```{r}
+library(caret)
+library(scales)
+library(digest)
+library(stringi)
+library(htmlwidgets)
+library(lsa)
+library(Matrix)
+library(textreuse)
+library(profvis)
+library(data.table) # this library contains the fread() function
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(pheatmap) # for clustering and reordering
+```
+
+Read in the dataset and name the columns
+
+```{r}
+data <- fread("data/docword.nytimes.txt.gz")
+
+vocab <- fread("data/vocab.nytimes.txt")
+```
+
+Adding meaningful column names to the dataset
+
+```{r}
+colnames(data) <- c("article_id", "word_id", "word_occurrences")
+
+data
+```
+
+First convert the data table into a list of vectors for each article.
+
+```{r}
+# Create a smaller dataset containing chosen number of articles because the dataset contains too many articles
+small_data <- filter(data, article_id <= 1000)
+colnames(vocab) <- c("word")
+vocab_vector <- setNames(1:nrow(vocab), vocab$word)
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
+  article_data <- filter(small_data, article_id == x)
+  
+  for (i in 1:nrow(article_data)) {
+    word_index <- as.integer(article_data[i, 'word_id'])
+    word_count <- as.integer(article_data[i, 'word_occurrences'])
+    article_vector[word_index] <- word_count
+  }
+  
+  # Add data from data table into article vector
+  vector_list[[x]] <- article_vector
+  
+  # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
+ if(x %% 100 == 0) {
+    cat("processed ", x)
+  }
+}
+# Print the vectors and dataframes for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+filter(small_data, article_id == 1)
+filter(small_data, article_id == 2)
+print(vector1)
+print(vector2)
+```
+
+**Basic algorithm for calculating similarity scores using cosine similarity**
+
+The cosine similarity matrix consists of n x n entries of the form (i, j), representing the cosine similarity between vector i and vector j. The matrix is symmetric, and diagonal entries represent the similarity of each vector with itself (which equals 1, unless there are any zero vectors).
+
+```{r}
+basic_algorithm <- function(vector_list) {
+
+# Number of vectors
+n <- length(vector_list)
+
+# Compute vector magnitudes
+# the sapply function is used to apply a function to each vector in vector_list
+vector_magnitudes <- sapply(vector_list, function(vec) sqrt(sum(vec^2)))
+
+# Create a matrix for the cosine similarity
+cosine_similarity_matrix <- matrix(0, n, n)
+
+# Compute pairwise cosine similarity
+for (i in 1:n) {
+  for (j in i:n) {
+    # Compute dot product
+    dot_product <- as.integer(vector_list[[i]] %*% vector_list[[j]])
+    
+    # Get magnitudes
+    magnitude_i <- vector_magnitudes[i]
+    magnitude_j <- vector_magnitudes[j]
+    
+    # Calculate cosine similarity
+    if (magnitude_i == 0 || magnitude_j == 0) {
+      cosine_similarity_matrix[i, j] <- NA  # If the vector is empty
+    } else {
+      cosine_similarity_matrix[i, j] <- dot_product / (magnitude_i * magnitude_j)
+    }
+    
+    # Since cosine similarity is symmetric, copy the value to complete the rest of the matrix
+    cosine_similarity_matrix[j, i] <- cosine_similarity_matrix[i, j]
+    }
+}
+return(cosine_similarity_matrix)
+}
+
+cosine_similarity_matrix <- basic_algorithm(vector_list)
+print(cosine_similarity_matrix)
+```
+
+Now let's use the profvis package to measure the efficiency of the basic algorithm that uses cosine similarity.
+
+```{r}
+# Profile the algorithm
+basic_algorithm_prof_results <- profvis({
+ basic_algorithm(vector_list)
+})
+
+basic_algorithm_prof_results
+```
+
+Save the basic cosine similarity algorithm profvis profile as an HTML file.
+
+```{r}
+saveWidget(basic_algorithm_prof_results, file = "basic_algorithm_profvis_profile.html")
+```
+
+**Locality Sensitive Hashing (LSH) algorithm: SimHash**
+
+Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called SimHash to perform the same task of finding similarity scores.
+
+```{r}
+names(vector_list) <- as.character(unique(small_data$article_id))
+
+# Function to normalize a vector
+normalize_vector <- function(vec) {
+  vec / sum(vec)
+}
+
+# Function to compute SimHash value (returns floating-point vector)
+compute_simHash <- function(vector_list, hash_size = 256) {
+  vector_list1 <- normalize_vector(vector_list)
+  v <- numeric(hash_size)
+  for (word in names(vector_list1)) {
+    hash <- digest(word, algo = "murmur32", serialize = FALSE)
+    bin <- as.integer(intToBits(strtoi(substr(hash, 1, 16), 16L))[1:hash_size])
+    v <- v + (bin * 2 - 1) * vector_list1[word]
+  }
+  # Add small random noise to ensure non-zero distances
+  v <- v + rnorm(hash_size, mean = 0, sd = 1e-10)
+  return(v)
+}
+
+# Function to calculate soft Hamming distance
+soft_hamming_distance <- function(hash1, hash2) {
+  sum(abs(hash1 - hash2))
+}
+
+# Main function to compute similarity matrix
+simHash_algorithm <- function(vector_list, hash_size = 256) {
+  simhash_list <- lapply(vector_list, compute_simHash, hash_size = hash_size)
+  article_ids <- names(simhash_list)
+  num_articles <- length(article_ids)
+  simHash_similarity_matrix <- matrix(0, nrow = num_articles, ncol = num_articles)
+  rownames(simHash_similarity_matrix) <- article_ids
+  colnames(simHash_similarity_matrix) <- article_ids
+  
+  max_dist <- 0
+  
+  for (i in seq_len(num_articles)) {
+    for (j in seq_len(num_articles)) {
+      if (i <= j) {
+        dist <- soft_hamming_distance(simhash_list[[i]], simhash_list[[j]])
+        max_dist <- max(max_dist, dist)
+        simHash_similarity_matrix[i, j] <- dist
+        simHash_similarity_matrix[j, i] <- dist
+      }
+    }
+  }
+  
+  if (max_dist < 1e-10) {
+    simHash_similarity_matrix[] <- 1  # All documents are similar
+  } else {
+    simHash_similarity_matrix <- 1 - (simHash_similarity_matrix / max_dist)
+  }
+  
+  return(simHash_similarity_matrix)
+}
+
+simHash_similarity_matrix <- simHash_algorithm(vector_list)
+
+print(simHash_similarity_matrix)
+```
+
+Now let's use the profvis package to measure the efficiency of the SimHash algorithm.
+
+```{r}
+# Profile the algorithm
+simHash_algorithm_prof_results <- profvis({
+ simHash_algorithm(vector_list)
+})
+
+simHash_algorithm_prof_results
+```
+
+Save the SimHash algorithm profvis profile as an HTML file.
+
+```{r}
+saveWidget(simHash_algorithm_prof_results, file = "simHash_algorithm_profvis_profile.html")
+```
+
+Now lets plot the time and memory that each of the algorithms take in a graph
+
+```{r}
+# Create the data frame
+plot_time_data <- data.frame(
+  Algorithm = c("Basic Cosine Similarity", "SimHash"),
+  Time = c(15790, 630),
+  Memory = c(103.2, 5.5)
+)
+
+# Plot for Time
+ggplot(plot_time_data, aes(x = Algorithm, y = Time, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Time Usage by Algorithm",
+       x = "Algorithm",
+       y = "Time (ms)",
+       fill = "Algorithm") +
+  theme_minimal()
+
+# Plot for Memory
+ggplot(plot_time_data, aes(x = Algorithm, y = Memory, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Memory Usage by Algorithm",
+       x = "Algorithm",
+       y = "Memory (bytes)",
+       fill = "Algorithm") +
+  theme_minimal()
+```
+
+**Accuracy**
+
+Now, let's check the accuracy of each of the matrices. To start, let's test the accuracy of the SimHash algorithm by comparing it to the basic cosine similarity algorithm. This will tell us how much of a trade off we will have in accuracy in order to improve efficiency.
+
+```{r}
+# Function to calculate MSE between two matrices
+calculate_mse_matrices <- function(matrix1, matrix2) {
+  # Flatten the matrices to vectors
+  vector1 <- as.vector(matrix1)
+  vector2 <- as.vector(matrix2)
+  
+  # Calculate MSE
+  mean((vector1 - vector2)^2)
+}
+
+# Calculate MSE
+mse_between_matrices <- calculate_mse_matrices(cosine_similarity_matrix, simHash_similarity_matrix)
+print(paste("MSE between Cosine Similarity and SimHash matrices:", mse_between_matrices))
+```
+
+Since the MSE value between the two algorithms is extremely low, this means that the SimHash algorithm values are almost just as accurate as the basic cosine similarity algorithm scores while drastically improving accuracy.
+
+Now, let's actually create a confusion matrix for each algorithm.
+
+```{r}
+# Define a threshold for similarity
+threshold <- 0.6
+
+# Create binary ground truth matrix using the threshold
+ground_truth_matrix <- ifelse(cosine_similarity_matrix > threshold, 1, 0)
+
+# Convert cosine similarity matrix to binary predictions
+cosine_predictions <- ifelse(cosine_similarity_matrix > threshold, 1, 0)
+
+# Convert SimHash similarity matrix to binary predictions
+# Assuming simHash_similarity_matrix is already a similarity measure (not distance)
+simHash_predictions <- ifelse(simHash_similarity_matrix > threshold, 1, 0)
+
+# Flatten the matrices to vectors for comparison
+ground_truth_vector <- as.vector(ground_truth_matrix)
+cosine_predictions_vector <- as.vector(cosine_predictions)
+simHash_predictions_vector <- as.vector(simHash_predictions)
+
+# Define levels explicitly
+levels <- c(0, 1)
+
+# Convert vectors to factors with explicit levels
+ground_truth_vector <- factor(ground_truth_vector, levels = levels)
+cosine_predictions_vector <- factor(cosine_predictions_vector, levels = levels)
+simHash_predictions_vector <- factor(simHash_predictions_vector, levels = levels)
+
+# Create confusion matrix for cosine similarity
+confusion_cosine <- confusionMatrix(cosine_predictions_vector, ground_truth_vector)
+print("Confusion Matrix for Cosine Similarity:")
+print(confusion_cosine)
+
+# Create confusion matrix for SimHash
+confusion_simHash <- confusionMatrix(simHash_predictions_vector, ground_truth_vector)
+print("Confusion Matrix for SimHash:")
+print(confusion_simHash)
+```
+
+From the confusion matrices, we can now also get specific values for the accuracy of each algorithm.
+
+```{r}
+# Extract accuracy from the confusion matrix
+accuracy_cosine <- confusion_cosine$overall['Accuracy']
+print(paste("Accuracy for Cosine Similarity:", accuracy_cosine))
+
+# Extract accuracy from the confusion matrix
+accuracy_simHash <- confusion_simHash$overall['Accuracy']
+print(paste("Accuracy for SimHash:", accuracy_simHash))
+```
+
+Now let's plot the accuracy of the two algorithms in a graph.
+
+```{r}
+accuracy_cosine <- 1
+accuracy_simHash <- 0.99889
+
+# Create the data frame
+plot_data <- data.frame(
+  Algorithm = factor(c("Basic Cosine Similarity", "SimHash")),
+  Accuracy = c(accuracy_cosine, accuracy_simHash)
+)
+
+# Create the lollipop chart
+ggplot(plot_data, aes(x = Algorithm, y = Accuracy, color = Algorithm)) +
+  geom_segment(aes(x = Algorithm, xend = Algorithm, y = 0.9, yend = Accuracy), size = 1) +
+  geom_point(size = 4) +
+  scale_y_continuous(limits = c(0.9, 1), breaks = seq(0.9, 1, 0.01), labels = percent) +
+  scale_color_manual(values = c("Basic Cosine Similarity" = "blue", "SimHash" = "red")) +
+  labs(title = "Accuracy Comparison of Similarity Search Algorithms",
+       x = "Algorithm",
+       y = "Accuracy") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```

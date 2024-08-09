@@ -1,0 +1,262 @@
+This document contains the code the MinHash algorithm because it was not what I wanted to use in my final analysis.
+
+Loading in libraries
+
+```{r}
+library(stringi)
+library(htmlwidgets)
+library(lsa)
+library(Matrix)
+library(textreuse)
+library(profvis)
+library(data.table) # this library contains the fread() function
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(pheatmap) # for clustering and reordering
+```
+
+Read in the dataset and name the columns
+
+```{r}
+data <- fread("data/docword.nytimes.txt.gz")
+
+vocab <- fread("data/vocab.nytimes.txt")
+```
+
+Adding meaningful column names to the dataset
+
+```{r}
+colnames(data) <- c("article_id", "word_id", "word_occurrences")
+
+data
+```
+
+First convert the data table into a list of vectors for each article.
+
+```{r}
+# Create a smaller dataset containing chosen number of articles because the dataset contains too many articles
+small_data <- filter(data, article_id <= 1000)
+
+colnames(vocab) <- c("word")
+vocab_vector <- setNames(1:nrow(vocab), vocab$word)
+
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
+  article_data <- filter(small_data, article_id == x)
+  
+  for (i in 1:nrow(article_data)) {
+    word_index <- as.integer(article_data[i, 'word_id'])
+    word_count <- as.integer(article_data[i, 'word_occurrences'])
+    article_vector[word_index] <- word_count
+  }
+  
+  # Add data from data table into article vector
+  vector_list[[x]] <- article_vector
+  
+  # Check progress by printing what article is processed for every 100 articles (only applies when small_data contains over 100 articles)
+ if(x %% 100 == 0) {
+    cat("processed ", x)
+  }
+}
+
+# Print the vectors and dataframes for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+filter(small_data, article_id == 1)
+filter(small_data, article_id == 2)
+print(vector1)
+print(vector2)
+```
+
+**Locality Sensitive Hashing (LSH) algorithm: MinHash**
+
+Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called MinHash to perform the same task of finding similarity scores.
+
+Let's start by going back to the original character form that we started with.
+
+```{r}
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- vocab_vector
+}
+```
+
+Now let's create the MinHash function.
+
+```{r}
+minHash_algorithm <- function(vector_list) {
+
+# Creating a minhash function converts tokenized text into a set of hash integers, and then selects the minimum value
+  
+minhash <- minhash_generator(n = 20, seed = 3552)
+
+# Apply minhash to each article vector
+minhash_results <- sapply(vector_list, function(vocab_vector) {
+  minhash_result <- minhash(vocab_vector)  # Apply minhash to the vector
+})
+
+
+dir <- system.file("extdata/ats", package = "textreuse")
+
+corpus <- TextReuseCorpus(
+  dir = dir, 
+  tokenizer = tokenize_ngrams, 
+  n = 5, 
+  minhash_func = minhash, 
+  keep_tokens = TRUE, 
+  progress = FALSE)
+
+# Calculating the LSH
+buckets <- lsh(corpus, bands = 10, progress = FALSE)
+
+baxter_matches <- lsh_query(buckets, "calltounconv00baxt")
+
+candidates <- lsh_candidates(buckets)
+
+# Apply Jaccard similarity to the pairs of documents
+comparison_results <- lsh_compare(candidates, corpus, jaccard_similarity, progress = FALSE)
+
+# Convert to numeric if IDs are character or factor
+#comparison_results$a <- as.numeric(as.character(comparison_results$a))
+#comparison_results$b <- as.numeric(as.character(comparison_results$b))
+}
+
+comparison_results <- minHash_algorithm(vector_list)
+```
+
+Now let's use the profvis package to measure the efficiency of the MinHash algorithm.
+
+```{r}
+# Profile the algorithm
+minHash_algorithm_prof_results <- profvis({
+ minHash_algorithm(vector_list)
+})
+
+minHash_algorithm_prof_results
+```
+
+Save the MinHash algorithm profvis profile as an HTML file.
+
+```{r}
+saveWidget(minHash_algorithm_prof_results, file = "minHash_algorithm_profvis_profile.html")
+```
+
+MinHash uses Jaccard similarity to compute similarity. Let us now try using a different LSH algorithm called SimHash that uses cosine similarity unlike MinHash.
+
+**Locality Sensitive Hashing (LSH) algorithm: SimHash**
+
+Now, let's use a different, more efficient, Locality Sensitive Hashing (LSH) algorithm called SimHash to perform the same task of finding similarity scores.
+
+```{r}
+names(vector_list) <- as.character(unique(small_data$article_id))
+
+# Function to normalize a vector
+normalize_vector <- function(vec) {
+  vec / sum(vec)
+}
+
+# Function to compute SimHash value (returns floating-point vector)
+compute_simHash <- function(vector_list, hash_size = 256) {
+  vector_list1 <- normalize_vector(vector_list)
+  v <- numeric(hash_size)
+  for (word in names(vector_list1)) {
+    hash <- digest(word, algo = "murmur32", serialize = FALSE)
+    bin <- as.integer(intToBits(strtoi(substr(hash, 1, 16), 16L))[1:hash_size])
+    v <- v + (bin * 2 - 1) * vector_list1[word]
+  }
+  # Add small random noise to ensure non-zero distances
+  v <- v + rnorm(hash_size, mean = 0, sd = 1e-10)
+  return(v)
+}
+
+# Function to calculate soft Hamming distance
+soft_hamming_distance <- function(hash1, hash2) {
+  sum(abs(hash1 - hash2))
+}
+
+# Main function to compute similarity matrix
+simHash_algorithm <- function(vector_list, hash_size = 256) {
+  simhash_list <- lapply(vector_list, compute_simHash, hash_size = hash_size)
+  article_ids <- names(simhash_list)
+  num_articles <- length(article_ids)
+  simHash_similarity_matrix <- matrix(0, nrow = num_articles, ncol = num_articles)
+  rownames(simHash_similarity_matrix) <- article_ids
+  colnames(simHash_similarity_matrix) <- article_ids
+  
+  max_dist <- 0
+  
+  for (i in seq_len(num_articles)) {
+    for (j in seq_len(num_articles)) {
+      if (i <= j) {
+        dist <- soft_hamming_distance(simhash_list[[i]], simhash_list[[j]])
+        max_dist <- max(max_dist, dist)
+        simHash_similarity_matrix[i, j] <- dist
+        simHash_similarity_matrix[j, i] <- dist
+      }
+    }
+  }
+  
+  if (max_dist < 1e-10) {
+    simHash_similarity_matrix[] <- 1  # All documents are similar
+  } else {
+    simHash_similarity_matrix <- 1 - (simHash_similarity_matrix / max_dist)
+  }
+  
+  return(simHash_similarity_matrix)
+}
+
+simHash_similarity_matrix <- simHash_algorithm(vector_list)
+
+print(simHash_similarity_matrix)
+```
+
+Now let's use the profvis package to measure the efficiency of the SimHash algorithm.
+
+```{r}
+# Profile the algorithm
+simHash_algorithm_prof_results <- profvis({
+ simHash_algorithm(vector_list)
+})
+
+simHash_algorithm_prof_results
+```
+
+Save the SimHash algorithm profvis profile as an HTML file.
+
+```{r}
+saveWidget(simHash_algorithm_prof_results, file = "simHash_algorithm_profvis_profile.html")
+```
+
+Now lets plot the time and memory that each of the algorithms take in a graph
+
+```{r}
+# Create the data frame
+plot_time_data <- data.frame(
+  Algorithm = c("MinHash", "SimHash"),
+  Time = c(790, 630),
+  Memory = c(92, 5.5)
+)
+
+# Plot for Time
+ggplot(plot_time_data, aes(x = Algorithm, y = Time, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("MinHash" = "blue", "SimHash" = "red")) +
+  labs(title = "Time Usage by Algorithm",
+       x = "Algorithm",
+       y = "Time (ms)",
+       fill = "Algorithm") +
+  theme_minimal()
+
+# Plot for Memory
+ggplot(plot_time_data, aes(x = Algorithm, y = Memory, fill = Algorithm)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("MinHash" = "blue", "SimHash" = "red")) +
+  labs(title = "Memory Usage by Algorithm",
+       x = "Algorithm",
+       y = "Memory (bytes)",
+       fill = "Algorithm") +
+  theme_minimal()
+```
