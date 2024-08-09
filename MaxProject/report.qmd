@@ -1,0 +1,113 @@
+---
+title: "Traditional Machine Learning Techniques Accurately and Efficiently Cluster Text Data"
+execute:
+  echo: false
+---
+
+#### Author: Max Shi
+
+## **Abstract:** 
+
+The problem of clustering articles has a variety of solutions, from modern machine learning techniques using deep learning to traditional machine learning techniques like K-means clustering. This study explores the efficiency and accuracy of traditional machine learning techniques for clustering articles in the form of bag of words data. The dataset comprises of 2,500 "The Indian Express" articles in bag-of-words format, with 500 articles labeled as one of five categories: business, education, entertainment, sports, and technology. Four different models were tested on efficiency (measured in computations) and accuracy (measured by Adjusted Rand Index). The study found that model 2 and model 3 had relatively slow data pre-processing steps, taking 1.6E11 and 7.5E11 computations respectively, while the other models had relatively fast pre-processing. Model 1 had relatively slow clustering, taking 4.7E9 computations, while models 2, 3, and 4 were faster with 3.1E8, 1.3E4, and 1.1E8 computations respectively. Models 1-4 had ARI of .9066, .2803, .0658, and .8510 respectively. Out of the four models, model 1 and model 4 had excellent accuracy. The study concluded that traditional machine learning techniques such as K-means clustering and Word2Vec are both efficient and effective when applied to the task of news article clustering.
+
+## **Background:**
+
+Many solutions to the problem of clustering articles use modern machine learning techniques such as deep learning, which perform excellent on accuracy but are not very efficient. Older solutions using traditional machine learning techniques are more efficient but are not as nuanced as modern techniques. In general, there is a trade-off between accuracy and efficiency. This study investigates the use of efficient, traditional clustering algorithms to achieve high accuracy.
+
+Article data used comes from "The Indian Express". Each article is labeled as one of five categories: business, education, entertainment, sports, and technology. All four models shared the same initial data pre-processing: data in bag-of-words format was scaled using TF-IDF. The data had dimensions 2500 x 24,758, with each article being a vector of length 24,758 (the vocabulary size). After this, each model used its own pre-processing and clustering algorithm. Model 1 used K-means clustering directly on TF-IDF scaled data. Model 2 applied PCA on the TF-IDF scaled data, reducing the dimensionality of each article from 24,758 to 2500, and then used K-means clustering on the reduced data. Models 3 and 4 used Word2Vec, a model which represents words as vectors to capture their semantic meaning. This study used Google's pre-trained word2vec tool from 2013, which represents words as 300 dimensional vectors. Model 3 converted each article into a 20 x 300 matrix, taking the 20 words with the highest TF-IDF values and converting each word into its 300 dimensional Word2Vec vector. After converting all the articles, a pairwise distance matrix between all of the articles was calculated using Chamfer Distance. Finally, k-medians clustering was applied on this distance matrix. Model 4 converted each article into a 200 x 300 matrix using a similar method to model 3. Then, a TF-IDF weighted average of all of the words was taken, effectively converting each article into a 1x300 vector. Finally, K-means clustering was used on the 300-dimensional vector representations of the articles.
+
+**Research Question:** \
+How do different clustering models perform in terms of accuracy and efficiency when applied to bag of words data?
+
+**Hypotheses:** \
+Best Accuracy Hypothesis: Converting articles to word2vec representations (Model 3 and Model 4) is expected to result in the best accuracy due to its ability to capture the semantic meaning of words in each article. \
+Best Efficiency Hypothesis: PCA (Model 2) will result in the most efficient performance at the cost of some accuracy.
+
+## **Results/Figures:**
+
+```{r}
+library(ggplot2)
+
+# Data for the models
+models <- c('Model 1', 'Model 2', 'Model 3', 'Model 4')
+total_efficiency <- c(4.7e9, 1.6e11 + 3.1e8, 7.5e11 + 1.3e4*10, 1.5e8 + 1.1e8)
+clustering_efficiency <- c(4.7e9, 3.1e8, 1.3e4*10, 1.1e8)
+
+# Creating a data frame for total efficiency
+df_total <- data.frame(Model = models, Efficiency = total_efficiency)
+
+# Creating a data frame for clustering efficiency
+df_clustering <- data.frame(Model = models, Efficiency = clustering_efficiency)
+
+# Plotting total efficiency
+ggplot(df_total, aes(x = Model, y = Efficiency)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  #scale_y_log10() +
+  labs(title = "Total Efficiency of Models (Including Preprocessing)", y = "Approx. Total Computations") +
+  theme_minimal()
+```
+
+Model 1 and Model 4 are much faster than Model 2 and Model 3 when considering data pre-processing. The computation of the Chamfer Distance Matrix in Model 3 is very costly, evident in its high total computations.
+
+```{r}
+# Plotting clustering efficiency
+ggplot(df_clustering, aes(x = Model, y = Efficiency)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  #scale_y_log10() +
+  labs(title = "Clustering Efficiency of Models", y = "Approx. Clustering Computations") +
+  theme_minimal()
+```
+
+When solely considering clustering efficiency, model 3 performs the fastest due to the nature of the k-medians clustering algorithm, only having to compute the distance matrix one time. Although they all use K-means clustering, Model 2 and Model 4 are very efficient compared to Model 1 because the data in Model 1 is so much larger.
+
+Efficiency was computed using time complexity. The following are the time complexities of each of the four models: \
+**Model 1** (tf-idf, kmeans): O(m x n x d x i) for kmeans. (m = \# centers, n = \# observations, d = \# features, i = \# iterations) \
+**Model 2** (tf-idf, PCA, kmeans): O(d x n2) for PCA (d = \# features, n = \# observations), O(m x n x d x i) for kmeans. (m = \# centers, n = \# observations, d = \# features, i = \# iterations) \
+**Model 3** (tf-idf, w2v, cd, kmedians): O(n1 x n2 x d) for Chamfer Distance between two articles (n1, n2 = \# words/article, d = \# embedding dimensions), O(n1 x n2 x d x n2) for distance matrix calculation, O(m x n x i) for kmedians. (m = \# centers, n = \# observations, i = \# iterations) \
+**Model 4** (tf-idf, avg w2v, kmeans): O(w x n x d) for weighted average calculation (w = \# words/article, n = \# articles), O(m x n x d x i) for distance matrix calculation. (m = \# centers, n = \# observations, d = \# features, i = \# iterations)
+
+Using these time complexities, numerical values for the approximate number of computations were computed (shown in graphs above)\
+**Model 1:** Clustering: 4.7 x 10E9 \
+**Model 2:** PCA preprocessing: 1.6 x 10E11 Clustering: 3.1 x 10E8 \
+**Model 3**: Distance matrix preprocessing: 7.5 x 10E11 Clustering: 1.3i x 10E4 (i = \# iterations, around 10) \
+**Model 4**: Weighted average preprocessing: 1.5 x 108 Clustering: 1.1 x 10E8
+
+```{r}
+# Data for ARI scores
+models <- c('Model 1', 'Model 2', 'Model 3', 'Model 4')
+ari_scores <- c(0.9066, 0.2803, 0.0658, 0.8510)
+
+# Creating a data frame for ARI scores
+df_ari <- data.frame(Model = models, ARI_Score = ari_scores)
+
+# Plotting ARI scores
+ggplot(df_ari, aes(x = Model, y = ARI_Score)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  ylim(0, 1) +
+  labs(title = "Best ARI Scores over 20 Initializations", y = "ARI Score") +
+  theme_minimal()
+```
+
+Accuracy was measured by Adjusted Rand Index, a measure of similarity between the model’s clusters and the correct clusters. This essentially measures the model’s ability to recognize the original five topics (entertainment, education, sports, business, and technology).
+
+**Results Summary:** Model 1 required no preprocessing, slow clustering, had exceptional ARI. Clusters closely match actual topics with minimal errors. Model 2 required slow PCA preprocessing, fast clustering with principal components, had low ARI. Clusters resemble actual topics but have many errors. Model 3 required very slow Chamfer Distance matrix preprocessing, fast clustering, had very low ARI. Clusters do not resemble original topics. Model 4 required fast weighted average preprocessing and fast clustering, had excellent ARI. Clusters closely match actual groupings. Model 4 had the best combination of efficiency and accuracy, being 18 times faster than Model 1 while achieving similar accuracy to Model 1.
+
+## **Discussion:** 
+
+My hypothesis about efficiency was correct: PCA clustered quickly but at the cost of performance. My hypothesis about accuracy was incorrect: Word2Vec was not necessary for the model to have high clustering accuracy, as seen in model 1's high ARI.
+
+The study found that traditional machine learning techniques, such as K-Means clustering, TF-IDF, and Word2Vec, are capable of accurately and efficiently clustering articles into meaningful topics. While modern techniques are often highlighted for their advancements in natural language processing tasks, the effectiveness and reliability of traditional methods should not be overlooked.
+
+**Next Steps:** Given its high efficiency and accuracy, model 4 can applied to solve text clustering problems outside of news articles, such as online reviews, movie descriptions/scripts, books, etc. To improve the performance of model 4, I can experiment with newer word2vec models (I used Google’s word2vec from 2013), different clustering algorithms, and different weighting techniques other than tf-idf.
+
+## Code and Data Availability:
+
+Github Repo: <https://github.com/the-codingschool/DSRP-2024-Alex/tree/main>
+
+Word2Vec: <https://www.kaggle.com/datasets/umbertogriffo/googles-trained-word2vec-model-in-python>
+
+"The Indian Express" Article Dataset: <https://www.kaggle.com/datasets/banuprakashv/news-articles-classification-dataset-for-nlp-and-ml>
+
+## Acknowledgements:
+
+I would like to acknowledge the following people: Sarah Parker for teaching me foundational R skills and data science skills; Alex Andoni for guiding me throughout this project, providing meaningful feedback and teaching me about different algorithms; Pavithra for being a supportive TA; The Coding School for hosting this amazing summer program; and my mentor group for providing mutual support and inspiration.

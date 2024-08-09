@@ -1,0 +1,372 @@
+```{r}
+# Load necessary libraries
+library(Matrix)
+library(readr)
+library(dplyr)
+library(data.table)
+library(hash)
+library(ggplot2)
+library(slam)
+```
+
+```{r}
+# File paths
+data_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/docword.nytimes.txt'
+nyt_vocab_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+english_vocab_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/words_alpha.txt'
+
+# Read article data
+data <- fread(data_file_path)
+colnames(data) <- c("article_id", "word_id", "word_id_occurrences")
+
+# Read NYT vocab data
+nyt_vocab <- fread(nyt_vocab_file_path)
+colnames(nyt_vocab) <- c("word")
+nyt_vocab_vector <- nyt_vocab$word
+nyt_vocab_set <- hash(keys = nyt_vocab_vector, values = 1:length(nyt_vocab_vector))
+
+# Read English vocab data
+english_vocab <- fread(english_vocab_file_path)
+colnames(english_vocab) <- c("word")
+english_vocab_set <- hash(keys = english_vocab$word, values = TRUE)
+```
+```{r}
+# List of meaningless words causing problems, invalid
+ignore_words <- c("xxx")
+
+# Identify valid word IDs
+valid_word_ids <- logical(length(nyt_vocab_vector))
+for (i in 1:length(valid_word_ids)) {
+  word <- nyt_vocab_vector[i]
+  if (!is.null(english_vocab_set[[word]]) || startsWith(word, 'zzz_')) {
+    valid_word_ids[i] = TRUE
+  }
+  if(word %in% ignore_words) {
+    valid_word_ids[i] = FALSE
+  }
+}
+```
+
+
+```{r}
+# Establish metadata
+metadata <- c(300000, 102660, 69679427)
+total_articles <- as.integer(metadata[1])
+vocabulary_size <- as.integer(metadata[2])
+total_words <- as.integer(metadata[3])
+```
+
+```{r}
+# Filter data for smaller dataframe
+sample_indices <- sample(300000, 2000, replace = FALSE)
+small_data <- filter(data, article_id %in% sample_indices)
+length(unique(small_data$article_id))
+```
+
+
+```{r}
+# Convert data table into a sparse matrix, filter out invalid words
+word_indices <- small_data$word_id 
+valid_word_mask <- valid_word_ids[word_indices] #for each row, check if word indices is valid
+small_data <- small_data[valid_word_mask, ] #filter out invalid rows
+nrow(small_data)
+```
+```{r}
+# Map randomly sampled article_ids to 1:2000
+unique_article_ids <- sort(unique(small_data$article_id))
+mapping1 = hash(keys = unique_article_ids, values = 1:2000)
+small_data_mapped <- mutate(small_data, new_article_id_1 = sapply(article_id, function(x) mapping1[[as.character(x)]]))
+
+```
+
+```{r}
+# Initialize sparse matrix
+sparse_matrix <- sparseMatrix(
+  i = small_data_mapped$new_article_id_1,
+  j = small_data_mapped$word_id,
+  x = small_data_mapped$word_id_occurrences,
+  dims = c(max(small_data_mapped$new_article_id_1), length(nyt_vocab_vector))
+)
+```
+
+
+```{r}
+# Process the zzz_ words
+for (i in 1:length(nyt_vocab_vector)) {
+  word <- nyt_vocab_vector[i]
+  if (startsWith(word, "zzz_")) {
+    suffix <- substr(word, 5, nchar(word))
+    if(suffix %in% ignore_words) {
+      sparse_matrix[, i] <- 0
+    }
+    else if (!is.null(nyt_vocab_set[[suffix]])) {
+      suffix_index <- nyt_vocab_set[[suffix]]
+      sparse_matrix[, suffix_index] <- sparse_matrix[, suffix_index] + sparse_matrix[, i]
+      sparse_matrix[, i] <- 0
+    }
+  }
+  if(i %% 100 == 0) {
+    print(word)
+  }
+}
+```
+
+```{r}
+dim(sparse_matrix)
+```
+
+```{r}
+# Read the sparse matrix
+bag_of_words <- readMM('/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/IndiaData/bag_of_words.mtx')
+
+```
+
+```{r}
+dim(bag_of_words)
+```
+
+```{r}
+#create tf-idf matrix
+create_tf_idf <-function(matrix) {
+  # Calculate Term Frequency (TF) = number of occurrences of word/total words
+  tf <- matrix
+  
+  # Calculate Document Frequency (DF) =  log(total #documents/#documents containing word)
+  df <- col_sums(as(tf > 0, "dMatrix"))
+  
+  # Calculate Inverse Document Frequency (IDF)
+  num_docs <- nrow(tf)
+  idf <- log((1 + num_docs) / (df + 1))
+  
+   # Create a diagonal matrix with IDF values
+  idf_matrix <- Diagonal(x = idf)
+  
+  # Calculate TF-IDF
+  tf_idf <- tf %*% idf_matrix
+  return(tf_idf)
+}
+```
+
+
+```{r}
+#Create tf-idf for India data
+bag_of_words_tf_idf<- create_tf_idf(bag_of_words)
+saveRDS(bag_of_words_tf_idf, "bag_of_words_tf_idf")
+```
+
+```{r}
+dim(bag_of_words_tf_idf)
+```
+
+```{r}
+# Extract off-diagonal elements
+matrix <- tf_idf #or sparse_matrix
+dot_product_matrix <- tcrossprod(matrix)
+off_diag_elements <- dot_product_matrix[upper.tri(dot_product_matrix, diag = FALSE)]
+
+# Calculate statistical measures for similarity scores
+mean_value <- mean(off_diag_elements)
+median_value <- median(off_diag_elements)
+sd_value <- sd(off_diag_elements)
+quartiles <- quantile(off_diag_elements)
+
+Q1 <- quantile(off_diag_elements, 0.25)
+Q3 <- quantile(off_diag_elements, 0.75)
+IQR <- Q3 - Q1
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+cat("Mean:", mean_value, "\n")
+cat("Median:", median_value, "\n")
+cat("Standard Deviation:", sd_value, "\n")
+cat("Quartiles\n", quartiles, "\n")
+cat("Lower Bound:", lower_bound, "Upper Bound:", upper_bound)
+# Convert similarity scores into a dataframe to find most similar articles
+upper_tri_indices <- upper.tri(dot_product_matrix, diag = FALSE)
+row_indices <- row(dot_product_matrix)[upper_tri_indices]
+column_indices <- col(dot_product_matrix)[upper_tri_indices]
+off_diag_data <- data.frame(
+  row = row_indices,
+  column = column_indices,
+  value = off_diag_elements
+)
+```
+```{r}
+#convert sparse matrix to easy to read dataframe
+create_df <- function(matrix) {
+  matrix_summary <-summary(matrix)
+  df <- data.frame(
+    article_id = matrix_summary$i,
+    word_id = matrix_summary$j,
+    value = matrix_summary$x
+  )
+  return(df)
+}
+```
+
+```{r}
+# Create dataframe for India data
+bag_of_words_df <- create_df(bag_of_words_tf_idf)
+write.csv(bag_of_words_df, "bag_of_words_df.csv", row.names = FALSE)
+```
+
+
+```{r}
+# Identify the row/column pair with the largest off-diagonal element
+max_similarity <- off_diag_data[which.max(off_diag_data$value), ]
+cat("Row with highest similarity:", max_similarity$row, "\n")
+cat("Column with highest similarity:", max_similarity$column, "\n")
+cat("Highest similarity (dot product):", max_similarity$value, "\n")
+
+```
+
+```{r}
+# Plot histogram of off-diagonal elements
+library(ggplot2)
+graphing_data <- data.frame(value = off_diag_elements)
+ggplot(graphing_data, aes(x = value)) +
+  #geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  geom_density(alpha = 0.5, fill = "red") + 
+  labs(title = "Distribution of TF-IDF Dot Product Similarity",
+       x = "Dot Product Value",
+       y = "Frequency") +
+  xlim(0, 1000) +
+  theme_minimal()
+```
+
+```{r}
+# Create dataframe for outliers
+arrange(off_diag_data, desc(value))
+outlier_df <- filter(off_diag_data, value > 1000)
+outlier_df
+```
+
+```{r}
+# Check Outlier dataframe for duplicates
+calculate_diff_count <- function(sparse_matrix, row1, row2) {
+  sum(sparse_matrix[row1, ] != sparse_matrix[row2, ])
+}
+
+# Initialize results list
+results <- vector("list", nrow(outlier_df))
+
+# Process each pair in outlier_df
+for (i in 1:nrow(outlier_df)) {
+  row <- outlier_df[i, "row"]
+  col <- outlier_df[i, "column"]
+  diff_count <- calculate_diff_count(sparse_matrix, row, col)
+  
+  if (diff_count < 10) {
+    results[[i]] <- c(row = row, col = col, diff_count = diff_count)
+  }
+  
+  if (i %% 1000 == 0) {
+    cat("processed", i, "rows\n")
+  }
+}
+```
+
+```{r}
+# Filter out NULL entries and convert to data frame
+is_duplicate <- do.call(rbind, results[!sapply(results, is.null)])
+is_duplicate <- as.data.frame(is_duplicate)
+names(is_duplicate) <- c("row", "col", "diff_count")
+print(head(is_duplicate))
+```
+
+```{r}
+# Initialize an empty data frame to store duplicates
+# This step takes the longest, find an optimized way to do this maybe
+is_duplicate <- data.frame(row = integer(), col = integer(), diff_count = integer(), stringsAsFactors = FALSE)
+
+for(i in 1:nrow(outlier_df)) {
+  row <- outlier_df[i, "row"]
+  col <- outlier_df[i, "column"]
+  diff_count <- sum(sparse_matrix[row, ] != sparse_matrix[col,])
+  
+  if (diff_count < 10)  {
+    is_duplicate <- rbind(is_duplicate, data.frame(row = row, col = col, diff_count = diff_count))
+  }
+  
+  if(i %% 1000 == 0) {
+    cat("processed", i)
+  }
+}
+
+```
+```{r}
+#Dealing with duplicates:
+#Option 1: ignore all duplicates (long)
+#Option 2: keep one instance of duplicated articles (hard)
+#Option 3: remove all outliers
+# This code proceeds with option 3
+# Count occurrences of each row in is_duplicate
+row_counts <- table(is_duplicate$row)
+rows_repeated_three_times_or_more <- names(row_counts[row_counts >= 3])
+rows_repeated_three_times_or_more <- as.numeric(rows_repeated_three_times_or_more)
+
+# Optionally, do the same for columns if needed
+column_counts <- table(is_duplicate$col)
+columns_repeated_three_times_or_more <- names(column_counts[column_counts >= 3])
+columns_repeated_three_times_or_more <- as.numeric(columns_repeated_three_times_or_more)
+
+# Display the results
+cat("Rows repeated three times or more:\n", rows_repeated_three_times_or_more, "\n")
+cat("Columns repeated three times or more:\n", columns_repeated_three_times_or_more, "\n")
+
+```
+```{r}
+# Find indices of Duplicate Articles
+duplicate_articles <- unique(c(is_duplicate$row, is_duplicate$col))
+duplicate_articles
+```
+
+
+```{r}
+# Remove all articles which have duplicates
+# Step 1: Identify articles to keep
+articles_to_keep <- setdiff(1:max(small_data_mapped$new_article_id_1), duplicate_articles)
+
+# Step 2: Filter the data to include only articles to keep
+filtered_data <- small_data_mapped[small_data_mapped$new_article_id_1 %in% articles_to_keep, ]
+
+# Map old article ids to new article ids in filtered data
+unique_article_ids <- sort(unique(filtered_data$new_article_id_1))
+mapping2 <- hash(keys = unique_article_ids, values = seq_along(unique_article_ids))
+filtered_data <- mutate(filtered_data, new_article_id_2 = sapply(new_article_id_1, function(x) mapping2[[as.character(x)]])) #key = old id, value = new id
+
+# Step 3: Create a new sparse matrix with filtered data
+filtered_sparse_matrix <- sparseMatrix(
+  i = filtered_data$new_article_id_2,
+  j = filtered_data$word_id,
+  x = filtered_data$word_id_occurrences,
+  dims = c(max(filtered_data$new_article_id_2), length(nyt_vocab_vector))
+)
+
+# final clean result: 
+filtered_sparse_matrix
+# final clean result with tf_idf: 
+filtered_sparse_matrix_tf_idf <- create_tf_idf(filtered_sparse_matrix)
+#final clean result with tf_idf dataframe:
+final_df <- filtered_data
+```
+
+
+```{r}
+# final values to export
+final_matrix <- filtered_sparse_matrix_tf_idf
+final_df <- create_df(filtered_sparse_matrix_tf_idf)
+final_mapping1 <- data.frame(original_id = keys(mapping1), new_id = values(mapping1))
+final_mapping2 <- data.frame(original_id = keys(mapping2), new_id = values(mapping2))
+```
+
+
+```{r}
+# Export to CSV
+saveRDS(final_matrix, "final_matrix.rds")
+write.csv(final_df, "final_df.csv", row.names = FALSE)
+write.csv(final_mapping1, "final_mapping1.csv", row.names = FALSE)
+write.csv(final_mapping2, "final_mapping2.csv", row.names = FALSE)
+```
+
+

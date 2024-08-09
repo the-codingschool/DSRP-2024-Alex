@@ -1,0 +1,432 @@
+```{r}
+library(Matrix)
+library(readr)
+library(dplyr)
+library(data.table)
+library(hash)
+library(ggplot2)
+library(slam)
+library(tidyr)
+library(stats)
+library(flexclust)
+library(lsa)
+library(ClusterR)
+library(philentropy)
+library(textreuse)
+library(cluster)
+library(fpc)
+```
+
+```{r}
+# k-means clustering with custom distance calculation
+cosine_distance <- function(x, centers) {
+  distance_matrix <- matrix(NA, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i, j] <- 1 - distance(rbind(x[i, ], centers[j, ]), method = "cosine")
+    }
+  }
+  return(distance_matrix)
+}
+
+dot_product_distance_0 <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- - distance(rbind(x[i, ], centers[j, ]), method = "inner_product")
+      #distance_matrix[i, j] <- - sum(x[i, ] %*% centers[j, ])  # Using negative dot product as distance
+    }
+  }
+  return(distance_matrix)
+}
+
+# Vectorized Dot Product Distance Function
+dot_product_distance <- function(x, centers) {
+  similarity_matrix <- tcrossprod(x, centers)
+  distance_matrix <- -similarity_matrix  # Use negative dot product as distance
+  return(distance_matrix)
+}
+
+
+euclidean_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- distance(rbind(x[i, ], centers[j, ]), method = "euclidean")# Using negative dot product as distance
+    }
+  }
+  return(distance_matrix)
+}
+
+jaccard_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      binary_row <- ifelse(x[i, ] != 0, 1, 0)
+      binary_col <- ifelse(centers[j, ] != 0, 1, 0)
+      #distance_matrix[i,j] <- distance(rbind(binary_row, binary_col), method = "jaccard")
+      intersection <- sum(binary_row & binary_col)
+      union <- sum(binary_row | binary_col)
+      jaccard_similarity <- intersection / union
+      distance_matrix[i,j] <- 1 - jaccard_similarity
+    }
+  }
+  return(distance_matrix)
+}
+
+convert_to_indices <- function(counts) {
+    as.character(which(counts != 0))
+}
+
+minhash_distance_vectors <- function(vector1, vector2, hashes = 200) {
+  minhash <- minhash_generator(n = hashes, seed = 42)
+  indices_1 <- convert_to_indices(vector1)
+  indices_2 <- convert_to_indices(vector2)
+  
+  jaccard_estimate <- sum(minhash(indices_1) == minhash(indices_2))/hashes
+  jaccard_estimate_distance <- 1 - jaccard_estimate
+  
+  jaccard_estimate_distance
+}
+
+minhash_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- minhash_distance_vectors(x[i, ], centers[j, ])
+    }
+  }
+  print("distance computed")
+  return(distance_matrix)
+}
+
+stupid_distance <- function(x, centers) {
+  distance_matrix <- matrix(0, nrow = nrow(x), ncol = nrow(centers))
+  for (i in 1:nrow(x)) {
+    for (j in 1:nrow(centers)) {
+      distance_matrix[i,j] <- 2
+    }
+  }
+  return(distance_matrix)
+}
+```
+
+
+```{r}
+#Custom k-means function to print progress, with custom distance metric 
+kcca_with_progress <- function(data, k, dist_function = "kmeans", nstart = 1) {
+  best_kcca <- NULL
+  best_tot_withinss <- Inf
+  best_silhouette <- -Inf
+  best_ch_index <- -Inf
+  
+  for (i in 1:nstart) {
+    set.seed(i)
+    kcca_result <- kcca(data, k = k, family = kccaFamily(which = dist_function), control = list(initcent = "kmeanspp", verbose = 3))
+    
+    # Calculate within-cluster sum of squares directly
+    cluster_centers <- kcca_result@centers
+    cluster_assignments <- kcca_result@cluster
+    total_wcss <- 0
+    
+    for (j in 1:k) {
+      cluster_points <- data[cluster_assignments == j, , drop = FALSE]
+      if (nrow(cluster_points) > 0) {
+        distances <- apply(cluster_points, 1, function(point) {
+          sum((point - cluster_centers[j, ])^2)
+        })
+        total_wcss <- total_wcss + sum(distances)
+      }
+    }
+
+    # Print progress for each start
+    cat("Initialization:", i, "\n")
+    cat("Total within-cluster sum of squares:", total_wcss, "\n")
+    
+    # Check if this is the best k-means result so far
+    if (total_wcss < best_tot_withinss) {
+      best_kcca <- kcca_result
+      #best_tot_withinss <- total_wcss
+      #best_silhouette <- mean(silhouette(cluster_assignments, dist(data))[, "sil_width"])
+      best_ch_index <- calinhara(data, cluster_assignments)
+    }
+  }
+  
+  return(list(kcca_result = best_kcca, 
+              wcss = best_tot_withinss, 
+              silhouette = best_silhouette, 
+              ch_index = best_ch_index))
+}
+
+```
+
+```{r}
+kcca(filtered_dense_matrix, k = 10, family = kccaFamily("angle"), control = list(initcent = "kmeanspp", verbose = 1))
+```
+```{r}
+dim(reduced_matrix)
+kcca(reduced_matrix, k = 10, family = kccaFamily("angle"), control = list(initcent = "kmeanspp", verbose = 1))
+```
+
+```{r}
+clustering_results <- kcca_with_progress(reduced_matrix, k = 10, "angle", nstart = 1)
+kcca_result <- clustering_results$kcca_result
+best_wcss <- clustering_results$wcss
+best_silhouette <- clustering_results$silhouette
+best_ch_index <- clustering_results$ch_index
+
+kcca_result
+cat("Best WCSS:", best_wcss, "\n")
+cat("Best Silhouette Score:", best_silhouette, "\n")
+cat("Best Calinski-Harabasz Index:", best_ch_index, "\n")
+```
+```{r}
+clustering_results <- kcca_with_progress(reduced_matrix, k = 2, "angle", nstart = 2)
+kcca_result <- clustering_results$kcca_result
+best_wcss <- clustering_results$wcss
+best_silhouette <- clustering_results$silhouette
+best_ch_index <- clustering_results$ch_index
+
+kcca_result
+cat("Best WCSS:", best_wcss, "\n")
+cat("Best Silhouette Score:", best_silhouette, "\n")
+cat("Best Calinski-Harabasz Index:", best_ch_index, "\n")
+```
+
+```{r}
+nyt_vocab_file_path <- '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+nyt_vocab <- fread(nyt_vocab_file_path)
+colnames(nyt_vocab) <- c("word")
+nyt_vocab_vector <- nyt_vocab$word
+```
+```{r}
+data_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_matrix.rds"
+df_path <- "/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/MaxProject/final_df.csv"
+data <- readRDS(data_path)
+```
+
+
+```{r}
+dim(reduced_matrix)
+```
+
+
+```{r}
+dense_matrix <- as.matrix(data)
+#remove zero variance columns
+zero_var_columns <- apply(dense_matrix, 2, var) == 0 #param: apply(matrix, dimension, function)
+filtered_dense_matrix <- dense_matrix[, !zero_var_columns]
+# dont need scaling since tf-idf alrleady does that 
+# Reduce dimensionality using PCA (takes ~five minutes to run with input size 1992)
+pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
+reduced_matrix <- pca_result$x
+```
+
+```{r}
+small_matrix <- filtered_dense_matrix[1:100, ]
+small_matrix <- small_matrix > 0
+small_binary_matrix <- Matrix(0, nrow = nrow(small_matrix), ncol = ncol(small_matrix))
+
+for(i in 1:100) {
+  small_binary_matrix[i,] <- as.integer(small_matrix[i,])
+}
+small_binary_matrix[1,]
+```
+
+
+```{r}
+kcca_result <- kcca_with_progress(reduced_matrix, k = 10, "angle", nstart = 1)
+kcca_result
+```
+
+```{r}
+#create dataframe with cluster, article_id, and original article_id
+cluster_data <- data.frame(
+  article_id = 1:length(kcca_result@cluster),
+  cluster = kcca_result@cluster
+)
+```
+
+
+```{r}
+# Create dataframes for each article, containing words and idf values. 
+# Initialize an empty list to store data frames
+list_of_data_frames <- list()
+
+# Loop through each row (article) in the dense matrix
+for (i in 1:nrow(dense_matrix)) {
+  non_zero_indices <- which(dense_matrix[i, ] != 0)
+  tf_idf_values <- dense_matrix[i, non_zero_indices]
+  
+  # Create a data frame for the current article
+  article_df <- data.frame(
+    article_id = i,
+    word_index = non_zero_indices,
+    tf_idf = tf_idf_values
+  )
+  
+  article_df <- article_df |> cbind(
+    word = sapply(article_df$word_index, function(index) {
+      nyt_vocab_vector[index]
+    })
+  )
+  
+  # Append the data frame to the list
+  list_of_data_frames[[i]] <- article_df
+}
+```
+
+
+```{r}
+#create aggregate cluster dataframe
+aggregated_tf_idf_list <- list()
+
+for (cluster_num in (1:10)){
+  articles_in_cluster <- filter(cluster_data, cluster == cluster_num)$article_id
+  
+  # Initialize merged_cluster_df with the first article in the cluster
+  merged_cluster_df <- list_of_data_frames[[articles_in_cluster[1]]]
+  
+  # Loop through the remaining articles in the cluster and perform full outer join
+  count <- 0
+  for(id in articles_in_cluster[-1]) {
+    count <- count + 1
+    df_id <- list_of_data_frames[[id]]
+    merged_cluster_df <- full_join(merged_cluster_df, df_id, by = "word", suffix = c("", paste0("_df", as.character(id))))
+    if(count%% 50 == 0){print(count)}
+    #takes too long to print if it's around 600
+    if(count > 500) {
+      break
+    }
+  }
+  
+  names(merged_cluster_df)[names(merged_cluster_df) == "article_id"] <- paste0("article_id_df", as.character(articles_in_cluster[1]))
+  names(merged_cluster_df)[names(merged_cluster_df) == "word_index"] <- paste0("word_index_df", as.character(articles_in_cluster[1]))
+  names(merged_cluster_df)[names(merged_cluster_df) == "tf_idf"] <- paste0("tf_idf_df", as.character(articles_in_cluster[1]))
+  
+  #calculate aggregate tfidf for each word in the cluster. (Finds most important words) (takes a while)
+  aggregated_tf_idf <- merged_cluster_df |>
+    rowwise() |>
+    mutate(total_tf_idf = sum(c_across(starts_with("tf_idf")), na.rm = TRUE)) |>
+    select(word, total_tf_idf) |>
+    arrange(desc(total_tf_idf))
+  aggregated_tf_idf_list[[cluster_num]] <- aggregated_tf_idf
+}
+```
+```{r}
+aggregated_tf_idf_list
+```
+
+```{r}
+# Word Cloud visualization
+library(wordcloud)
+library(RColorBrewer)
+op <- par(mar = c(0, 0, 0, 0))
+
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+
+for(i in (1:10)) {
+  aggregated_tf_idf <- aggregated_tf_idf_list[[i]]
+  wordcloud_df <- data.frame(word = aggregated_tf_idf$word, freq = aggregated_tf_idf$total_tf_idf)
+  # Normalize the TF-IDF values
+  wordcloud_df$freq <- normalize(wordcloud_df$freq)
+  # Remove 'zzz_' prefix from the word column
+  wordcloud_df$word <- gsub("^zzz_", "", wordcloud_df$word)
+  
+  wordcloud(words = wordcloud_df$word, freq = wordcloud_df$freq, scale=c(1,0.1), min.freq = summary(wordcloud_df$freq)["1st Qu."], max.words=200, random.order=FALSE, rot.per=0.0, colors=brewer.pal(8, "Dark2"))
+}
+par(op)
+```
+```{r}
+summary(wordcloud_df$freq)["1st Qu."]
+```
+
+
+```{r}
+# Reduce dimensionality for visualization using PCA
+pca_result <- prcomp(filtered_dense_matrix, scale. = TRUE)
+reduced_matrix <- pca_result$x
+```
+
+```{r}
+pca_data <- data.frame(pca_result$x, Cluster = as.factor(kcca_result@cluster))
+```
+
+```{r}
+# Extract standard deviations of principal components
+sdev <- pca_result$sdev
+
+# Calculate variance explained by each principal component
+variances <- sdev^2
+
+# Calculate proportion of variance explained
+proportion_variance_explained <- variances / sum(variances)
+
+# Calculate cumulative proportion of variance explained
+cumulative_variance_explained <- cumsum(proportion_variance_explained)
+
+# Combine results into a data frame for easy viewing
+pca_variance <- data.frame(
+  PC = paste0("PC", 1:length(proportion_variance_explained)),
+  Variance = variances,
+  ProportionVarianceExplained = proportion_variance_explained,
+  CumulativeVarianceExplained = cumulative_variance_explained
+)
+
+# View the results
+print(pca_variance)
+```
+```{r}
+# Convert PC to numeric for proper x-axis labeling
+pca_variance$PC <- as.numeric(gsub("PC", "", pca_variance$PC))
+
+# Scree plot
+ggplot(pca_variance, aes(x = PC, y = ProportionVarianceExplained)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Scree Plot",
+       x = "Principal Component",
+       y = "Proportion of Variance Explained") +
+  theme_minimal()
+```
+```{r}
+# Choose the number of components that explain a sufficient amount of variance, using math or graph
+#explained_variance <- summary(pca_result)$importance[2,]
+#num_components <- which(cumsum(explained_variance) > 0.90)[1]
+num_components <- 676
+# Reduce data to the selected number of components
+reduced_data <- pca_result$x[, 1:num_components]
+```
+
+
+```{r}
+# Plot the first two principal components
+library(ggplot2)
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "K-means Clustering Result",
+       x = "Principal Component 1",
+       y = "Principal Component 2") +
+  theme_minimal() + 
+  coord_cartesian(xlim = c(0, 10), ylim = c(0, 10))
+
+```
+```{r}
+library(plotly)
+
+# Create 3D scatter plot
+fig <- plot_ly(pca_data, x = ~PC1, y = ~PC2, z = ~PC3, type = 'scatter3d', color = ~Cluster)
+
+fig <- fig |> layout(
+  scene = list(
+    xaxis = list(range = c(0, 10)),  # Set x-axis limits
+    yaxis = list(range = c(0, 10)),  # Set y-axis limits
+    zaxis = list(range = c(0, 10))   # Set z-axis limits
+  )
+)
+
+fig
+```
+
+

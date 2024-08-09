@@ -1,0 +1,213 @@
+Install Libraries
+```{r}
+library(readr)
+library(dplyr)
+library(data.table)
+library(hash)
+```
+
+Loading Data
+```{r}
+#file paths
+data_file_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/docword.nytimes_head.txt'
+nyt_vocab_file_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/vocab.nytimes.txt'
+english_vocab_file_path = '/Users/maxshi/Documents/GitHub/DSRP-2024-Alex/data/words_alpha.txt'
+```
+
+```{r}
+#read article data
+data <- fread(data_file_path)
+colnames(data) <- c("article_id", "word_id", "word_id_occurrences")
+```
+
+```{r}
+#read nyt vocab data
+nyt_vocab <- fread(nyt_vocab_file_path)
+colnames(nyt_vocab) <- c("word")
+nyt_vocab_vector <- nyt_vocab$word
+length(nyt_vocab_vector)
+
+nyt_vocab_set <- hash(keys = nyt_vocab_vector, values = 1:length(nyt_vocab_vector))
+
+#read english vocab data
+english_vocab <- fread(english_vocab_file_path)
+colnames(english_vocab) <- c("word")
+english_vocab_set <- hash(keys = english_vocab$word, values = TRUE)
+#use double brackets syntax to check set, i.e. english_vocab_set[["example"]]
+```
+Ignore nonsensical words such as "ffff", but keep words prefixed with zzz_ since they seem important.
+
+```{r}
+valid_word_ids <- logical(length(nyt_vocab_vector))
+for (i in 1:length(valid_word_ids)) {
+  word <- (nyt_vocab_vector)[i]
+  if (!is.null(english_vocab_set[[ word ]] ) || startsWith(word, 'zzz_')) {
+    valid_word_ids[i] = TRUE
+  }
+}
+
+sum(valid_word_ids)
+```
+
+Establish Metadata
+```{r}
+metadata <- c(300000, 102660, 69679427)
+
+total_articles <- as.integer(metadata[1])
+vocabulary_size <- as.integer(metadata[2])
+total_words <- as.integer(metadata[3])
+```
+
+Make smaller dataframe
+```{r}
+small_data <- filter(data, article_id <= 1000)
+small_data
+```
+
+Convert data table into vectors for each article
+Cleaning Conditions: ignore word_ids with nonsensical words (words in nyt vocab but not in english vocab). 
+Check zzz_{word} to see if word is in nyt_vocab_vector. If it is, ignore zzz_{word} and increase frequency of {word} by one.
+
+```{r}
+word <- "zzz_apple"
+substr(word, 5, nchar(word))
+nyt_vocab_set["aahed"]
+```
+
+```{r}
+vector_list <- list()
+for (x in unique(small_data$article_id)) {
+  article_vector <- numeric(length(vocab_vector)) # Initialize with zeros
+  article_data <- filter(small_data, article_id == x)
+  
+  for (i in 1:nrow(article_data)) {
+    word_index <- as.integer(article_data[i, 'word_id'])
+    word <- nyt_vocab_vector[word_index]
+    word_occurences <- as.integer(article_data[i, 'word_id_occurrences'])
+    #check if word is valid, ignore otherwise
+    if(valid_word_ids[word_index]) {
+      #check if word starts with zzz_{word}, replace word_index with index of {word} if word exists in nyt vocab
+      if(startsWith(word, "zzz_")) {
+        suffix <- substr(word, 5, nchar(word))
+        
+        if(!is.null(nyt_vocab_set[[suffix]] )) {
+          word_index = nyt_vocab_set[[suffix]]
+        }
+      }
+      article_vector[word_index] = article_vector[word_index] + word_occurences
+    }
+  }
+  
+  # Add data from data table into article vector
+  vector_list[[x]] <- article_vector
+  if(x %% 100 == 0) {
+    cat("processed ", x)
+  }
+}
+
+# Print the vectors and dataframes for verification
+vector1 = vector_list[[1]]
+vector2 = vector_list[[2]]
+filter(small_data, article_id == 1)
+filter(small_data, article_id == 2)
+```
+```{r}
+crossprod(sparse_matrix[1,], sparse_matrix[2,])
+```
+
+
+Compute pairwise dot products for all vectors in vector list
+
+```{r}
+# Number of articles (vectors)
+n <- length(vector_list)
+
+# Initialize an n x n matrix to store the dot products
+dot_product_matrix <- matrix(0, n, n)
+
+# Compute pairwise dot products and store them in the matrix
+for (i in 1:n) {
+  for (j in (i:n)) {
+    if(i <= n && j <= n) {
+      dot_product_matrix[i, j] <- as.integer(vector_list[[i]] %*% vector_list[[j]])
+    }
+  }
+    cat("done processing i = ", i)
+}
+
+```
+
+Statistical measures for similarity scores: 
+```{r}
+off_diag_elements <- dot_product_matrix[upper.tri(dot_product_matrix, diag = FALSE)]
+mean_value <- mean(off_diag_elements)
+median_value <- median(off_diag_elements)
+sd_value <- sd(off_diag_elements)
+cat("Mean:", mean_value, "\n")
+cat("Median:", median_value, "\n")
+cat("Standard Deviation:", sd_value, "\n")
+```
+
+Convert similarity scores into dataframe, find most similar articles
+```{r}
+# Assuming dot_product_matrix is your 1000x1000 matrix
+
+# Step 1: Create a logical matrix for the upper triangle without the diagonal
+upper_tri_indices <- upper.tri(dot_product_matrix, diag = FALSE)
+
+# Step 2: Extract row and column indices
+row_indices <- row(dot_product_matrix)[upper_tri_indices]
+column_indices <- col(dot_product_matrix)[upper_tri_indices]
+
+# Step 3: Extract the off-diagonal elements
+off_diag_elements <- dot_product_matrix[upper_tri_indices]
+
+# Step 4: Combine values and indices into a data frame
+off_diag_data <- data.frame(
+  row = row_indices,
+  column = column_indices,
+  value = off_diag_elements
+)
+
+# Step 5: Identify the row/column pair with the largest off-diagonal element
+max_similarity <- off_diag_data[which.max(off_diag_data$value), ]
+
+#Print the results
+cat("Row with highest similarity:", max_similarity$row, "\n")
+cat("Column with highest similarity:", max_similarity$column, "\n")
+cat("Highest similarity (dot product):", max_similarity$value, "\n")
+
+```
+```{r}
+filter(off_diag_data, value > 3000)
+```
+
+```{r}
+library(ggplot2)
+graphing_data <- data.frame(value = off_diag_elements)
+ggplot(graphing_data, aes(x = value)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Off-Diagonal Elements",
+       x = "Dot Product Value",
+       y = "Frequency") +
+  xlim(0, 1000) +
+  theme_minimal()
+
+```
+Investigate Outlier
+```{r}
+vector_list[[276]] %*% vector_list[[277]]
+filter(small_data, article_id == 781, word_id_occurrences > 10)
+filter(small_data, article_id == 782, word_id_occurrences > 10)
+```
+```{r}
+
+nyt_vocab_vector[9282]
+
+```
+nyt_vocab_vector[indexOf, ]
+
+Conclusions: There's a bunch of repeated nonsensical words like ffff, causing similarity scores to skyrocket. The data must be cleaned to only include words which contain information. 
+
+Common words repeated a lot such as "administrative" lead to high similarity scores. Use tf-idf to normalize, adjust for this. 
+
