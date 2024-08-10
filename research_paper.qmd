@@ -63,7 +63,7 @@ Text data, one typical representative of big data, is ubiquitously present in al
 
 Hashing techniques typically reduce the dimensions of the data, leading to improved space complexity. SimHash efficiently computes the Hamming distance and has a space complexity of O(n), where n is the number of documents. It reduces the dimensionality of the data while maintaining time complexity. MinHash approximates the Jaccard similarity with a space complexity of O(k), where k is the number of hash functions used. This is typically much smaller than the original dimensionality d, making it efficient for large datasets. Computing the dot product between two vectors has a space complexity of O(d), where d is the number of features. There is no inherent hashing involved in the dot product similarity, and the space complexity is directly related to the number of features. The space complexity of TF-IDF is O(n×d)O(n \\times d)O(n×d), where n is the number of documents and d is the number of unique terms across all documents. This can be higher than the space complexities of hashing techniques, as TF-IDF involves storing detailed term frequency information.
 
-![](http://127.0.0.1:32541/graphics/d18d9040-b35d-4f71-bcd5-03ea2208cb3f.png)
+![](images/Rplotcorrect.png)
 
 ### **SimHash**
 
