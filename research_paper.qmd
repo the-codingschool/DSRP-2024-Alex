@@ -27,6 +27,10 @@ In the age of big data, the necessity of analyzing the efficacy of algorithms th
 
 Such kind of performance analysis is as much important as the algorithm itself. In this study, the emphasis will be on solely the time and space complexity of the four algorithms.
 
+## Dot Product
+
+The dot product is a mathematical operation that takes two equal-length sequences of numbers (usually vectors) and returns a single number. In the context of text similarity, the dot product is commonly used with vectors that represent documents, such as in the Bag of Words (BoW) or Term Frequency-Inverse Document Frequency (TF-IDF) models. Each dimension of these vectors corresponds to a word in the document, and the values in the vectors represent the frequency or importance of the words.
+
 ## **SimHash**
 
 SimHash is a locality-sensitive hashing (LSH) technique used to approximate the Hamming distance between high-dimensional vectors. It's particularly useful for detecting near-duplicate documents. In contrast to other LSH methods, SimHash creates a fingerprint for a document that is designed to be similar for documents that are similar in content. The fingerprints (or hashes) are binary vectors, and the similarity between documents can be measured by the Hamming distance between these vectors, the number of positions where the corresponding bits differ. It is often used for high-dimensional sparse vectors, such as those representing text where each dimension corresponds to a word in a large vocabulary. The sparse nature of these vectors means that most entries are zero, which represents the absence of a particular word. The process of computing a SimHash includes creating a weighted vector by summing up randomly generated vectors associated with each feature, which is a word. If a word is present, its associated vector is added and the term's importance is accounted for by the weights, and if the word is absent, the vector is not added. The final Simhash vector is obtained by setting each bit to 1 if the corresponding dimension in the summed vector is positive and to 0 otherwise.
@@ -49,19 +53,132 @@ Many studies have compared a variety of text similarity measures, focusing on th
 
 Our primary goal is to evaluate the efficiency of algorithms when the document size is small, medium, and large. Large corpora are commonly used in mass analysis to develop and teach algorithms. Functionality and large versus small datasets do not affect the architecture, functionality, and usability of the algorithm. However, big data during development will certainly affect the algorithm's efficiency. More specifically, the efficiency of the similarity measures by wasting a lot of time and computer resources may not reach an acceptable answer. At the pre-processing stage of the data between the similarity measure and the document, there are logical and deterministic operations. Even though a standard algorithm is used, by no means each operation can be performed in the same amount of time. We will use 100 documents, 500 documents, and 1000 documents as the small, medium, and large datasets respectively in this study and evaluate their efficiency.
 
-## Running Code
+## Description of the Bag of Words Dataset
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+This study focuses on the efficiency of different algorithms in text-processing, simhash, minhash, dot product, and Tf-idf. The purpose of this study is to measure the time and space difference experimenting different algorithms in different datasets. TF-IDF, Dot Product, Minhash, and Simhash are implemented over these bag of words columns; different algorithms are tested in a distributed fashion.
 
-```{r}
-1 + 1
-```
+Text data, one typical representative of big data, is ubiquitously present in all areas such as social media, sensor devices, finances, production chains, energy management, and telecommunications where it grows exponentially. Many important decisions are made according to data patterns, especially in the era of big data. The distributed structure of analyzing big data are commonly preferred but it is difficult through the Canopy, DBSCAN, K-Means, and hierarchical methods proposed. The fingerprint and clustering algorBig data's fingerprint and clustering algorithmsl performance. In this regard, the important thing is scalability. Different algorithms have been proposed on scalable computing platforms such as Spark and Hadoop. Except for this, the most popular and simple model to represent the data is bag of words. This model is obtained by applying an embedding algorithm to the text. The most classical one of these algorithms is TF-IDF. TF-IDF has a concept of feature selection, important words are described by w; important words are described by weighing according to their frequency and inversely proportional document frequency, and modified the text.
 
-You can add options to executable code like this
+# **Space Complexity Analysis**
 
-```{r}
-#| echo: false
-2 * 2
-```
+Hashing techniques typically reduce the dimensions of the data, leading to improved space complexity. SimHash efficiently computes the Hamming distance and has a space complexity of O(n), where n is the number of documents. It reduces the dimensionality of the data while maintaining time complexity. MinHash approximates the Jaccard similarity with a space complexity of O(k), where k is the number of hash functions used. This is typically much smaller than the original dimensionality d, making it efficient for large datasets. Computing the dot product between two vectors has a space complexity of O(d), where d is the number of features. There is no inherent hashing involved in the dot product similarity, and the space complexity is directly related to the number of features. The space complexity of TF-IDF is O(n×d)O(n \\times d)O(n×d), where n is the number of documents and d is the number of unique terms across all documents. This can be higher than the space complexities of hashing techniques, as TF-IDF involves storing detailed term frequency information.
 
-The `echo: false` option disables the printing of code (only output is displayed).
+![](http://127.0.0.1:32541/graphics/d18d9040-b35d-4f71-bcd5-03ea2208cb3f.png)
+
+### **SimHash**
+
+-   **Small Dataset:** 1.02 kB
+
+-   **Medium Dataset:** 4.22 kB
+
+-   **Large Dataset:** 8.22 kB
+
+**Analysis:**
+
+SimHash uses very little memory across all dataset sizes. This is consistent with its design, which reduces the dimensionality of the data by creating a compact binary fingerprint (hash) for each document. The memory usage increases gradually as the dataset size increases, reflecting its linear space complexity.
+
+### **MinHash**
+
+-   **Small Dataset:** 160.22 kB
+
+-   **Medium Dataset:** 800.22 kB
+
+-   **Large Dataset:** 1.60 MB
+
+**Analysis:**
+
+MinHash requires significantly more memory compared to SimHash. This is expected because MinHash generates multiple hash values for each document (depending on the number of hash functions used), leading to higher memory consumption. The memory usage grows linearly with the dataset size, which aligns with its space complexity being proportional to the number of hash functions (`O(k)`), where `k` is usually set to a fixed number.
+
+### **TF-IDF**
+
+-   **Small Dataset:** 6.47 kB
+
+-   **Medium Dataset:** 38.98 kB
+
+-   **Large Dataset:** 126.90 kB
+
+**Analysis:**
+
+TF-IDF has medium space complexity that increases as the dataset size increases. This is due to the working principle behind TF-IDF, which requires storing term frequencies and inverse document frequencies for each term in the vocabulary. While the memory usage is higher than SimHash, it is lower than MinHash and Dot Product. This is because TF-IDF retains detailed frequency information, but doesn’t generate multiple hashes; whereas, Minhash generated multiple hashes.
+
+### **Dot Product**
+
+-   **Small Dataset:** 80.22 kB
+
+-   **Medium Dataset:** 2.00 MB
+
+-   **Large Dataset:** 8.00 MB
+
+**Analysis:**
+
+Dot Product has the highest memory usage among the algorithms, especially when the dataset size increases. This is because the dot product requires storing and computing with large matrices, which can require a lot of memory usage. The rapid increase in memory usage as the dataset grows is consistent with its `O(d)` space complexity, where `d` is the number of features. For large datasets, the memory requirements can become substantial, as evidenced by the bar graph.
+
+SimHash is the most memory-efficient method, making it suitable for cases where memory resources are constrained or when handling very large datasets. MinHash requires more memory but is still efficient and is often used for large-scale approximate similarity computations. TF-IDF balances between detail and memory usage, making it useful for applications where maintaining term frequency information is important. Dot Product is the most memory-intensive, and even though it has accurate similarity computations, it may not be applicable for very large datasets unless memory is not a concern.
+
+# **Time Complexity Analysis**
+
+![](images/Rplotcorrecttime.png){width="569" height="340"}
+
+#### Small Dataset:
+
+**TF-IDF**: Mean time = 1545.31 ms
+
+**Dot Product**: Mean time = 1303.48 ms
+
+**SimHash**: Mean time = 122023.32 ms
+
+**MinHash**: Mean time = 92017.04 ms
+
+#### Medium Dataset:
+
+**TF-IDF**: Mean time = 1001.79 ms
+
+**Dot Product**: Mean time = 4198.21 ms
+
+**SimHash**: Mean time = 1109599.73 ms
+
+**MinHash**: Mean time = 533398.23 ms
+
+#### Large Dataset:
+
+**TF-IDF**: Mean time = 1.20 ms
+
+**Dot Product**: Mean time = 25.63 ms
+
+**SimHash**: Mean time = 4360.93 ms
+
+**MinHash**: Mean time = 1158.74 ms
+
+TF-IDF has the lowest execution time for the large dataset, but its time complexity grows with the number of documents and features. Dot Product is relatively faster than other methods for large datasets but scales with the number of documents and features. SimHash and MinHash show higher times for larger datasets compared to the other methods. Both methods involve hashing, which can be more computationally expensive for larger datasets but can be more scalable in terms of space complexity. SimHash has the highest execution times, especially for large datasets, likely due to its complex hashing operations and high-dimensional data. MinHash also has relatively high execution times, but it's more efficient compared to SimHash. TF-IDF and Dot Product are more efficient in terms of execution time, especially for large datasets, but TF-IDF scales significantly with the size of the term-document matrix.
+
+## Implications for Big Data and Machine Learning
+
+In a big data context, the bag of words model is the only model that can process huge volumes of text in a reasonable time. Most large-scale or big data environments rely on the bag of words model in combination with distributed computing and the map-reduce or chi-spark programming model in order to achieve very large scale reading of unstructured or semi-structured data. Most academic and in-production big data solutions use LSI, LDA, in-map-reduce document embeddings, word2vec, doc2vec, paragraph embeddings (a subset of doc2vec), combined condition for distributed and word embeddings with implicit or explicit topic identification, and other complex techniques. These more complex models still rely on the bag of words model, due to its inherent capability of processing a large quantity of text in relatively low processing time, particularly in distributed environments.
+
+The conclusion of "boiling down" a Big Data pipeline to the bag of words model, no matter if you are going to use word embeddings or more complex document embeddings, and the fact that we need to treat all texts the same way, makes this research applicable to a great variety of practical data processing environments. As a practical example, in this research, we took a description of a worldwide network of soccer fans. In real life, a big data production pipeline would be composed by cluster text analysis tools running the algorithm with the models generated in every region where the company has internet availability. In all cells, the model generated would be exactly the same, and the pipeline would be able to process huge volumes of descriptions using the same model. Additionally, the pipeline would generate pre-scored models on coordinates and cosine distances for use in supervised and unsupervised machine learning tasks, on recommendations, next likely purchase, likely engagement and many other tasks, in a heterogeneous world.
+
+# Conclusion
+
+In terms of feature space relationship modelling and dimension reduction, Minhash and vector similarity computations are increasingly important techniques often used in the preprocessing step. They are usually used in large datasets to reduce computational complexity for LSH algorithms. In this study, we present an efficiency analysis of four similarity calculations: dot product, Simhash and Minhash, and TF-IDF vectors. The results show that the two alternatives to conventional vector similarity calculation have a high degree of efficiency. In terms of performance, Simhash-based similarity computation must utilize the advantages of real feature diversity. In light of these reasons, the featured diversity of long features can be calculated using the conventional TF-IDF method to be added to the second alternative.
+
+The similarity calculation process of a set of feature vectors is one of two important parts of a machine learning process. Dot product is used for these types of similarity calculations, and it was created for simple linear regression and root mean square calculation. The dot product can be used in calculational applications because of the similarity measure properties throughout the vector space and the straightforward implementation. The TF-IDF is often used in text mining to extract the most important features of data. The final dimension large and sparse stability offer attractive advantages considering hashing-based algorithms. Dot product is the best similarity calculation, as the TF-IDF captures the importance of each feature. The discrete rank values of the Minhash show a high degree of similarity. However, the feature diversity inside of the features has information that is not reflected in the dot product or Minhash. The mapped result of Simhash is, as a consequence, sometimes more effective in terms of feature diversity. The relations of high-dimensional feature element expressions that are used in dot product, Minhash, and TF-IDF impact the running time of these cases when the hardware is hardcoded.
+
+## Summary of Key Findings
+
+This study investigates the efficiency of dot product, Simhash, Minhash, and TF-IDF algorithms. Evaluation is done through an empirical study based on two sub-corpus obtained from a large-scale general-purpose web-crawled text database. These corpora have an intended use to perform large-scale similarity search, and as a result, are represented as Bag-of-Words (BoW). The key findings of this study provide an answer to the questions of when to use these algorithms and configurations. Especially, why in some situations, Simhash generally results in a more effective similarity search than Minhash. The collaborative nature of groups and documents in a group can affect the size of tokens and, thus, the generation time of the resulting BoW on the raw BoW.
+
+Simhash performs a similarity threshold for keywords that are more than 16,000 in the same time as Minhash when there are 80,000 keywords. However, on the other hand, when all keywords are common with BoW configuration generated according to longer documents, the execution time is slower. If only some keywords are common, the performance is consistent with TF-IDF performance.
+
+## References:
+
+Shrivastava, A. and Li, P. "In Defense of MinHash Over SimHash." 2014. [\[PDF\]](https://arxiv.org/pdf/1407.4416 "https://arxiv.org/pdf/1407.4416")
+
+Lee, M., Pincombe, B., and Welsh, M. "An empirical evaluation of models of text document similarity." 2005. [\[PDF\]](https://core.ac.uk/download/12751185.pdf "https://core.ac.uk/download/12751185.pdf")
+
+I. Abdalla, H. and A. Amer, A. "Boolean logic algebra driven similarity measure for text based applications." 2021. [ncbi.nlm.nih.gov](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8330432/ "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8330432/")
+
+Dwi Prasetya, D., Prasetya Wibawa, A., and Hirashima, T. "The performance of text similarity algorithms." 2018. [\[PDF\]](https://core.ac.uk/download/268127050.pdf "https://core.ac.uk/download/268127050.pdf")
+
+Sakira Kamaruddin, S., Yusof, Y., Azzah Abu Bakar, N., Ahmed Tayie, M., and Abdulsattar A.Jabbar Alkubaisi, G. "Graph-based Representation for Sentence Similarity Measure : A Comparative Analysis." 2018. [\[PDF\]](https://core.ac.uk/download/159925613.pdf "https://core.ac.uk/download/159925613.pdf")
+
+Efficient Estimation of Word Representations in Vector Space, in Proceedings of Workshop at ICLR, 2013.
