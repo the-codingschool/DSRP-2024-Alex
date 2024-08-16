@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.5.56">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Derin Özkan">
+
+<title>Investigating the Efficiency of Natural Language Processing Algorithms</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+q { quotes: "“" "”" "‘" "’"; }
+</style>
+
+
+<script src="research_paper_files/libs/clipboard/clipboard.min.js"></script>
+<script src="research_paper_files/libs/quarto-html/quarto.js"></script>
+<script src="research_paper_files/libs/quarto-html/popper.min.js"></script>
+<script src="research_paper_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="research_paper_files/libs/quarto-html/anchor.min.js"></script>
+<link href="research_paper_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="research_paper_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="research_paper_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="research_paper_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="research_paper_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Investigating the Efficiency of Natural Language Processing Algorithms</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Derin Özkan </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="abstract" class="level3">
+<h3 class="anchored" data-anchor-id="abstract">Abstract</h3>
+<p>This study compares the efficiency of four popular text similarity algorithms: <strong>TF-IDF</strong>, <strong>Dot Product</strong>, <strong>SimHash</strong>, and <strong>MinHash</strong>, using datasets with different sizes (small, medium, and large) based on Bag of Words (BoW) representations. The study primarily evaluates their <strong>time and space complexities</strong> across datasets to determine how well they handle large-scale textual data. The goal is to identify how each method performs in terms of scalability and resource efficiency, which is critical in fields like search engines, recommendation systems, and large-scale document processing.</p>
+</section>
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
+<p>Modeling the semantic similarity between text documents is a significant theoretical challenge for cognitive science but also has many widely beneficial applications in areas such as information handling and decision support systems. Such an ability could be used to screen incoming documents for relevance, organize a body of documents on a specific topic, or provide diverse recommendations of documents in response to a query. At a more advanced level’s ability to assess whether different documents should be discarded in favour of one another; at very basic levels’ ability to gauge whether different documents should be examined in the first place in terms of relevance (Lee et al., 2005).</p>
+<p>The Internet has led to generation of massive and high dimensional data. In many industrial applications, the size of the datasets has long exceeded the memory capacity of a single machine. Leading search companies routinely use sparse binary representations in their large data systems. This increase of scale poses enormous challenges to the existing technology and demands the rapid development of truly innovative algorithms. In order to efficiently allow similarity search on very large scale datasets, locality sensitive hashing (LSH) based approaches have gained increasing popularity over the past few years with the promise of scalable and practical solutions to the nearest neighbor search problem. The vast majority of prior work on LSH has focused on similarity measures for general real-valued vectors. MinHash is an LSH for binary vectors, while SimHash is an LSH for general real-valued data. A critical question that has not been addressed in assessing these algorithms is their efficiency in handling datasets with textual documents. I will aim to compare the efficiency of MinHash, SimHash, dot product, and TF-IDF through analyzing their time and space complexities.</p>
+</section>
+<section id="background-and-motivation" class="level2">
+<h2 class="anchored" data-anchor-id="background-and-motivation"><strong>Background and Motivation</strong></h2>
+<p>The study analyzes four text similarity algorithms using a dataset from the UCI Machine Learning Repository’s Bag of Words collection. Each article in this dataset is represented as a text document containing a collection of words. Each article can be represented as a Bag of Words (BoW) vector. If a word appears in an article, its value is the occurrence count of that word in the article; otherwise, its value is zero. The similarity between the BoW vectors is calculated using four text similarity algorithms: dot product, simhash, minhash, and TF-IDF. The resulting text similarity matrices are analyzed with respect to their efficiency in terms of time and space complexity. The study aimed to evaluate the computational efficiency and accuracy of these algorithms in handling high-dimensional text data.</p>
+<p>A text document (an article) is a collection of words. A bag of words (BoW) representation of a text document is a vector representation of that text document, and each dimension of the BoW vector refers to a distinct word in that text document. The value of each dimension in a BoW representation could be based on some certain text measurement of that word in the article. The text measurements that could be used are the occurrence count of that word in the article, the ternary value of that word in the article, etc. A bag of words (BoW) representation of n text documents with k distinct words is an n by k matrix, each row of the matrix refers to a text document, and each column refers to a distinct word. If a word appears in a document, the value is the text measurement of that word in the document; otherwise, the value is zero.</p>
+</section>
+<section id="importance-of-efficiency-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="importance-of-efficiency-analysis"><strong>Importance of Efficiency Analysis</strong></h2>
+<p>In the age of big data, the necessity of analyzing the efficacy of algorithms that can be deployed to handle large datasets becomes important. With the adoption of cloud computing platforms, many widely used algorithms are analyzed for their performance in that type of environment. The performance of the algorithm is analyzed mainly in three segments as follows:</p>
+<p>1. Time Complexity, which is the amount of time an algorithm takes to produce an output, irrespective of the underlying hardware and other time constraints. It is typically expressed using Big O notation.<br>
+2. Space Complexity, which is the amount of memory an algorithm uses relative to the size of the input. Like time complexity, it is also expressed using Big O notation and focuses on the memory required to run the algorithm.<br>
+3. Based on the performance analysis, they are classified into groups based on their efficiency.</p>
+<p>Such kind of performance analysis is as much important as the algorithm itself. In this study, the emphasis will be on solely the time and space complexity of the four algorithms.</p>
+</section>
+<section id="dot-product" class="level2">
+<h2 class="anchored" data-anchor-id="dot-product">Dot Product</h2>
+<p>The dot product is a mathematical operation that takes two equal-length sequences of numbers (usually vectors) and returns a single number. In the context of text similarity, the dot product is commonly used with vectors that represent documents, such as in the Bag of Words (BoW) or Term Frequency-Inverse Document Frequency (TF-IDF) models. Each dimension of these vectors corresponds to a word in the document, and the values in the vectors represent the frequency or importance of the words.</p>
+</section>
+<section id="simhash" class="level2">
+<h2 class="anchored" data-anchor-id="simhash"><strong>SimHash</strong></h2>
+<p>SimHash is a locality-sensitive hashing (LSH) technique used to approximate the Hamming distance between high-dimensional vectors. It’s particularly useful for detecting near-duplicate documents. In contrast to other LSH methods, SimHash creates a fingerprint for a document that is designed to be similar for documents that are similar in content. The fingerprints (or hashes) are binary vectors, and the similarity between documents can be measured by the Hamming distance between these vectors, the number of positions where the corresponding bits differ. It is often used for high-dimensional sparse vectors, such as those representing text where each dimension corresponds to a word in a large vocabulary. The sparse nature of these vectors means that most entries are zero, which represents the absence of a particular word. The process of computing a SimHash includes creating a weighted vector by summing up randomly generated vectors associated with each feature, which is a word. If a word is present, its associated vector is added and the term’s importance is accounted for by the weights, and if the word is absent, the vector is not added. The final Simhash vector is obtained by setting each bit to 1 if the corresponding dimension in the summed vector is positive and to 0 otherwise.</p>
+</section>
+<section id="minhash" class="level2">
+<h2 class="anchored" data-anchor-id="minhash"><strong>MinHash</strong></h2>
+<p>The performance of Minhash and Locality Sensitive Hashing (LSH) has been illuminated when detecting near-duplicate files. LSH itself also finds applications in nearest neighbor search and recommendation systems. However, rather than focusing on these applications, this paper aims to evaluate the raw performance of Minhash in approximating the Jaccard similarity of large bag of words-like datasets, where each document contains a set of words. The primary difference between this work and existing experiments on Minhash is in the characteristics of the dataset we use. While previous work on Minhash has concentrated mainly on sparse data such as tf-idf bag of words, here, we focus on dense discrete data and explore how to exploit these characteristics for better performance. The dataset from the UCI repository (the Bag of Words dataset) typically represents text data in a sparse format where each document is a sparse vector of word counts.</p>
+<p>The Jaccard similarity of two set-based transactions is defined as the size of their intersection divided by the size of their union. Formally, given two sets A and B, J(A,B) is defined as |A ∩ B|/(|A ∪ B|). The Jaccard similarity thresholding problem is to find all pairs of set-based data with Jaccard similarity above some pre-specified threshold θ. Detecting duplication finds its origins in database and data deduplication, or more generally sensor database management. The problem also has implications in spam detection, computer forensics, ML classification, and recommendation systems.</p>
+</section>
+<section id="tf-idf" class="level2">
+<h2 class="anchored" data-anchor-id="tf-idf"><strong>TF-IDF</strong></h2>
+<p>TF-IDF (term frequency-inverse document frequency) is a feature extraction method that is used for text classification and clustering. It computes each input document’s representation. TF-IDF is a numerical statistic that reflects how important a word is to a document in a collection of documents. It contains two components: a local component that is the term frequency (TF), and a global component that is the inverse document frequency (IDF). Given a vocabulary of words, each document can be represented as a feature vector that contains the TF-IDF of each word in the vocabulary. The TF-IDF is computed for each word in the vocabulary of input documents as follows: the term frequency is the number of times a word appears in a document divided by the total number of words in the document. The inverse document frequency is the inverse of the number of documents that contain the word, calculated as the ratio between the total number of documents and the number of documents where the word appears.</p>
+<p>Given an input set of text documents that belong to a specific category and a vocabulary, the set of documents of the category is processed for TF-IDF feature extraction. The vocabulary is embedded with features with their corresponding TF-IDF values obtained from the training data. Using the obtained features, all the documents are represented as input feature vectors. TF-IDF is a well-known feature extraction method employed in text-related machine learning tasks. The features obtained from TF-IDF are not the features that are most related to topics, but they are the ones that have known minimal compositions. TF-IDF can be used with many classification models and function as a good baseline solution for text-related machine learning applications. While TF-IDF is efficient for feature extraction, it is not necessarily slow unless the dataset is very large or the vocabulary is extremely extensive. The speed depends on the implementation and the size of the dataset. Also, TF-IDF is generally faster than some other feature extraction techniques, such as word embeddings, because it doesn’t require training on a large corpus.</p>
+</section>
+<section id="previous-studies-on-efficiency-of-algorithms" class="level2">
+<h2 class="anchored" data-anchor-id="previous-studies-on-efficiency-of-algorithms"><strong>Previous Studies on Efficiency of Algorithms</strong></h2>
+<p>Many studies have compared a variety of text similarity measures, focusing on the classification or clustering task. Some studies have used a data-driven approach to compare and combine word embeddings for text similarity measures. This study aims to explore the tradeoff between time and space complexity when used for document classification.</p>
+<p>Our primary goal is to evaluate the efficiency of algorithms when the document size is small, medium, and large. Large corpora are commonly used in mass analysis to develop and teach algorithms. Functionality and large versus small datasets do not affect the architecture, functionality, and usability of the algorithm. However, big data during development will certainly affect the algorithm’s efficiency. More specifically, the efficiency of the similarity measures by wasting a lot of time and computer resources may not reach an acceptable answer. At the pre-processing stage of the data between the similarity measure and the document, there are logical and deterministic operations. Even though a standard algorithm is used, by no means each operation can be performed in the same amount of time. We will use 100 documents, 500 documents, and 1000 documents as the small, medium, and large datasets respectively in this study and evaluate their efficiency.</p>
+</section>
+<section id="description-of-the-bag-of-words-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="description-of-the-bag-of-words-dataset">Description of the Bag of Words Dataset</h2>
+<p>This study focuses on the efficiency of different algorithms in text-processing, simhash, minhash, dot product, and Tf-idf. The purpose of this study is to measure the time and space difference experimenting different algorithms in different datasets. TF-IDF, Dot Product, Minhash, and Simhash are implemented over these bag of words columns; different algorithms are tested in a distributed fashion.</p>
+<p>Text data, one typical representative of big data, is typically present in all areas such as social media, sensor devices, finances, production chains, energy management, and telecommunications where it grows exponentially. Many important decisions are made according to data patterns, especially in the era of big data. The distributed structure of analyzing big data are commonly preferred but it is difficult through the Canopy, DBSCAN, K-Means, and hierarchical methods proposed. The fingerprint and clustering algorBig data’s fingerprint and clustering algorithmsl performance. In this regard, the important thing is scalability. Different algorithms have been proposed on scalable computing platforms such as Spark and Hadoop. Except for this, the most popular and simple model to represent the data is bag of words. This model is obtained by applying an embedding algorithm to the text. The most classical one of these algorithms is TF-IDF. TF-IDF has a concept of feature selection, important words are described by w; important words are described by weighing according to their frequency and inversely proportional document frequency, and modified the text.</p>
+</section>
+<section id="space-complexity-analysis" class="level1">
+<h1><strong>Space Complexity Analysis</strong></h1>
+<p>Hashing techniques typically reduce the dimensions of the data, leading to improved space complexity. SimHash efficiently computes the Hamming distance and has a space complexity of O(n), where n is the number of documents. It reduces the dimensionality of the data while maintaining time complexity. MinHash approximates the Jaccard similarity with a space complexity of O(k), where k is the number of hash functions used. This is typically much smaller than the original dimensionality d, making it efficient for large datasets. Computing the dot product between two vectors has a space complexity of O(d), where d is the number of features. There is no inherent hashing involved in the dot product similarity, and the space complexity is directly related to the number of features. The space complexity of TF-IDF is O(n×d)O(n \times d)O(n×d), where n is the number of documents and d is the number of unique terms across all documents. This can be higher than the space complexities of hashing techniques, as TF-IDF involves storing detailed term frequency information.</p>
+<p><img src="images/Rplotcorrect-01.png" class="img-fluid"></p>
+<section id="simhash-1" class="level3">
+<h3 class="anchored" data-anchor-id="simhash-1"><strong>SimHash</strong></h3>
+<ul>
+<li><p><strong>Small Dataset:</strong> 1.02 kB</p></li>
+<li><p><strong>Medium Dataset:</strong> 4.22 kB</p></li>
+<li><p><strong>Large Dataset:</strong> 8.22 kB</p></li>
+</ul>
+<p><strong>Analysis:</strong></p>
+<p>SimHash uses very little memory across all dataset sizes. This is consistent with its design, which reduces the dimensionality of the data by creating a compact binary fingerprint (hash) for each document. The memory usage increases gradually as the dataset size increases, reflecting its linear space complexity.</p>
+</section>
+<section id="minhash-1" class="level3">
+<h3 class="anchored" data-anchor-id="minhash-1"><strong>MinHash</strong></h3>
+<ul>
+<li><p><strong>Small Dataset:</strong> 160.22 kB</p></li>
+<li><p><strong>Medium Dataset:</strong> 800.22 kB</p></li>
+<li><p><strong>Large Dataset:</strong> 1.60 MB</p></li>
+</ul>
+<p><strong>Analysis:</strong></p>
+<p>MinHash requires significantly more memory compared to SimHash. This is expected because MinHash generates multiple hash values for each document (depending on the number of hash functions used), leading to higher memory consumption. The memory usage grows linearly with the dataset size, which aligns with its space complexity being proportional to the number of hash functions (<code>O(k)</code>), where <code>k</code> is usually set to a fixed number.</p>
+</section>
+<section id="tf-idf-1" class="level3">
+<h3 class="anchored" data-anchor-id="tf-idf-1"><strong>TF-IDF</strong></h3>
+<ul>
+<li><p><strong>Small Dataset:</strong> 6.47 kB</p></li>
+<li><p><strong>Medium Dataset:</strong> 38.98 kB</p></li>
+<li><p><strong>Large Dataset:</strong> 126.90 kB</p></li>
+</ul>
+<p><strong>Analysis:</strong></p>
+<p>TF-IDF has medium space complexity that increases as the dataset size increases. This is due to the working principle behind TF-IDF, which requires storing term frequencies and inverse document frequencies for each term in the vocabulary. While the memory usage is higher than SimHash, it is lower than MinHash and Dot Product. This is because TF-IDF retains detailed frequency information, but doesn’t generate multiple hashes; whereas, Minhash generated multiple hashes.</p>
+</section>
+<section id="dot-product-1" class="level3">
+<h3 class="anchored" data-anchor-id="dot-product-1"><strong>Dot Product</strong></h3>
+<ul>
+<li><p><strong>Small Dataset:</strong> 80.22 kB</p></li>
+<li><p><strong>Medium Dataset:</strong> 2.00 MB</p></li>
+<li><p><strong>Large Dataset:</strong> 8.00 MB</p></li>
+</ul>
+<p><strong>Analysis:</strong></p>
+<p>Dot Product has the highest memory usage among the algorithms, especially when the dataset size increases. This is because the dot product requires storing and computing with large matrices, which can require a lot of memory usage. The rapid increase in memory usage as the dataset grows is consistent with its <code>O(d)</code> space complexity, where <code>d</code> is the number of features. For large datasets, the memory requirements can become substantial, as evidenced by the bar graph.</p>
+<p>SimHash is the most memory-efficient method, making it suitable for cases where memory resources are constrained or when handling very large datasets. MinHash requires more memory but is still efficient and is often used for large-scale approximate similarity computations. TF-IDF balances between detail and memory usage, making it useful for applications where maintaining term frequency information is important. Dot Product is the most memory-intensive, and even though it has accurate similarity computations, it may not be applicable for very large datasets unless memory is not a concern.</p>
+</section>
+</section>
+<section id="time-complexity-analysis" class="level1">
+<h1><strong>Time Complexity Analysis</strong></h1>
+<p><img src="images/Rplotcorrecttime-01.png" class="img-fluid"></p>
+<section id="small-dataset" class="level4">
+<h4 class="anchored" data-anchor-id="small-dataset">Small Dataset:</h4>
+<p><strong>TF-IDF</strong>: Mean time = 1545.31 ms</p>
+<p><strong>Dot Product</strong>: Mean time = 1303.48 ms</p>
+<p><strong>SimHash</strong>: Mean time = 122023.32 ms</p>
+<p><strong>MinHash</strong>: Mean time = 92017.04 ms</p>
+</section>
+<section id="medium-dataset" class="level4">
+<h4 class="anchored" data-anchor-id="medium-dataset">Medium Dataset:</h4>
+<p><strong>TF-IDF</strong>: Mean time = 1001.79 ms</p>
+<p><strong>Dot Product</strong>: Mean time = 4198.21 ms</p>
+<p><strong>SimHash</strong>: Mean time = 1109599.73 ms</p>
+<p><strong>MinHash</strong>: Mean time = 533398.23 ms</p>
+</section>
+<section id="large-dataset" class="level4">
+<h4 class="anchored" data-anchor-id="large-dataset">Large Dataset:</h4>
+<p><strong>TF-IDF</strong>: Mean time = 1.20 ms</p>
+<p><strong>Dot Product</strong>: Mean time = 25.63 ms</p>
+<p><strong>SimHash</strong>: Mean time = 4360.93 ms</p>
+<p><strong>MinHash</strong>: Mean time = 1158.74 ms</p>
+<p>TF-IDF has the lowest execution time for the large dataset, but its time complexity grows with the number of documents and features. Dot Product is relatively faster than other methods for large datasets but scales with the number of documents and features. SimHash and MinHash show higher times for larger datasets compared to the other methods. Both methods involve hashing, which can be more computationally expensive for larger datasets but can be more scalable in terms of space complexity. SimHash has the highest execution times, especially for large datasets, likely due to its complex hashing operations and high-dimensional data. MinHash also has relatively high execution times, but it’s more efficient compared to SimHash. TF-IDF and Dot Product are more efficient in terms of execution time, especially for large datasets, but TF-IDF scales significantly with the size of the term-document matrix.</p>
+</section>
+<section id="implications-for-big-data-and-machine-learning" class="level2">
+<h2 class="anchored" data-anchor-id="implications-for-big-data-and-machine-learning">Implications for Big Data and Machine Learning</h2>
+<p>In a big data context, the bag of words model is a model that can process huge volumes of text in a reasonable time. Most large-scale or big data environments rely on the bag of words model in combination with distributed computing and the map-reduce or chi-spark programming model in order to achieve very large scale reading of unstructured or semi-structured data. Most academic and in-production big data solutions use LSI, LDA, in-map-reduce document embeddings, word2vec, doc2vec, paragraph embeddings (a subset of doc2vec), combined condition for distributed and word embeddings with implicit or explicit topic identification, and other complex techniques. These more complex models still rely on the bag of words model, due to its ability of processing a large quantity of text in relatively low processing time, particularly in distributed environments.</p>
+<p>The conclusion of <q>boiling down</q> a Big Data pipeline to the bag of words model, no matter if you are going to use word embeddings or more complex document embeddings, and the fact that we need to treat all texts the same way, makes this research applicable to a great variety of practical data processing environments. As a practical example, in this research, we took a description of a worldwide network of soccer fans. In real life, a big data production pipeline would be composed by cluster text analysis tools running the algorithm with the models generated in every region where the company has internet availability. In all cells, the model generated would be exactly the same, and the pipeline would be able to process huge volumes of descriptions using the same model. Additionally, the pipeline would generate pre-scored models on coordinates and cosine distances for use in supervised and unsupervised machine learning tasks, on recommendations, next likely purchase, likely engagement and many other tasks, in a heterogeneous world.</p>
+</section>
+</section>
+<section id="conclusion" class="level1">
+<h1>Conclusion</h1>
+<p>In the study comparing the efficiency of dot product, TF-IDF, MinHash, and SimHash, several important findings were observed. Dot product provided efficient similarity calculation for simpler datasets.It performed well in terms of both timecomplexity and computational speed when dealing with smaller, dense datasets. However, as the feature space increased in dimensionality, its effectiveness started to decrease due to the limitations in its time complexity. TF-IDF stood out when working with text-heavy data in the dataset by weighting the importance of each feature. It showed strong performance in feature extraction and proved particularly useful for sparse data. TF-IDF was highly efficient for dimensional reduction tasks. Known for its ability to <strong>efficiently approximate similarity</strong>, MinHash performed well in ranking features and was particularly useful in scenarios with large datasets. SimHash had a higher time complexity when compared to that of MinHash. SimHash’s ability to handle a variety of features made it the most scalable when dealing with large, unstructured data.</p>
+<section id="summary-of-key-findings" class="level2">
+<h2 class="anchored" data-anchor-id="summary-of-key-findings">Summary of Key Findings</h2>
+<p>This study investigates the efficiency of dot product, Simhash, Minhash, and TF-IDF algorithms. Evaluation is done through an empirical study based on two sub-corpus obtained from a large-scale general-purpose web-crawled text database. These corpora have an intended use to perform large-scale similarity search, and as a result, are represented as Bag-of-Words (BoW). The key findings of this study provide an answer to the questions of when to use these algorithms and configurations. Especially, why in some situations, Simhash generally results in a more effective similarity search than Minhash. In computations that require less memory usage, SimHash is the more effective when compared to MinHash. However, for algorithms that require less time, MinHash is the more effective method. Hashing techniques appear to be most useful in cases of handling large datasets.</p>
+</section>
+<section id="acknowledgments" class="level2">
+<h2 class="anchored" data-anchor-id="acknowledgments">Acknowledgments:</h2>
+<p>I would like to acknowledge Alexandr Andoni for his help in creating this paper and guiding me through the dataset. I would also like to acknowledge The Coding School team, Sarah Parker, and Pavithra for teaching me the fundamentals of data science and R.</p>
+<section id="github-links" class="level3">
+<h3 class="anchored" data-anchor-id="github-links">GitHub Links:</h3>
+<p><a href="https://github.com/the-codingschool/DSRP-2024-Alex/blob/dev-Derin/correct_time_complexity.R" class="uri">https://github.com/the-codingschool/DSRP-2024-Alex/blob/dev-Derin/correct_time_complexity.R</a></p>
+<p><a href="https://github.com/the-codingschool/DSRP-2024-Alex/blob/dev-Derin/space_complexity.R" class="uri">https://github.com/the-codingschool/DSRP-2024-Alex/blob/dev-Derin/space_complexity.R</a></p>
+</section>
+</section>
+<section id="references" class="level2">
+<h2 class="anchored" data-anchor-id="references">References:</h2>
+<p>Shrivastava, A. and Li, P. <q>In Defense of MinHash Over SimHash.</q> 2014. <a href="https://arxiv.org/pdf/1407.4416" title="https://arxiv.org/pdf/1407.4416">[PDF]</a></p>
+<p>Lee, M., Pincombe, B., and Welsh, M. <q>An empirical evaluation of models of text document similarity.</q> 2005. <a href="https://core.ac.uk/download/12751185.pdf" title="https://core.ac.uk/download/12751185.pdf">[PDF]</a></p>
+<p>I. Abdalla, H. and A. Amer, A. <q>Boolean logic algebra driven similarity measure for text based applications.</q> 2021. <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8330432/" title="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8330432/">ncbi.nlm.nih.gov</a></p>
+<p>Dwi Prasetya, D., Prasetya Wibawa, A., and Hirashima, T. <q>The performance of text similarity algorithms.</q> 2018. <a href="https://core.ac.uk/download/268127050.pdf" title="https://core.ac.uk/download/268127050.pdf">[PDF]</a></p>
+<p>Sakira Kamaruddin, S., Yusof, Y., Azzah Abu Bakar, N., Ahmed Tayie, M., and Abdulsattar A.Jabbar Alkubaisi, G. <q>Graph-based Representation for Sentence Similarity Measure : A Comparative Analysis.</q> 2018. <a href="https://core.ac.uk/download/159925613.pdf" title="https://core.ac.uk/download/159925613.pdf">[PDF]</a></p>
+<p>Efficient Estimation of Word Representations in Vector Space, in Proceedings of Workshop at ICLR, 2013.</p>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const onCopySuccess = function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  }
+  const getTextToCopy = function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+    text: getTextToCopy
+  });
+  clipboard.on('success', onCopySuccess);
+  if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+    // For code content inside modals, clipBoardJS needs to be initialized with a container option
+    // TODO: Check when it could be a function (https://github.com/zenorocha/clipboard.js/issues/860)
+    const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+      text: getTextToCopy,
+      container: window.document.getElementById('quarto-embedded-source-code-modal')
+    });
+    clipboardModal.on('success', onCopySuccess);
+  }
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp('/' + window.location.host + '/');
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
